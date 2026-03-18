@@ -1597,85 +1597,58 @@ export default function EquivalenciasApp() {
       {/* ── LOGIN SCREEN ── */}
       {needsLogin && (
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: `linear-gradient(135deg, ${C.red} 0%, #7B1E1E 100%)`, padding: 24 }}>
-          <div style={{ width: "100%", maxWidth: 400, background: "#fff", borderRadius: 20, padding: "36px 36px 28px", boxShadow: "0 20px 60px rgba(0,0,0,0.3)", animation: "fadeIn 0.4s ease" }}>
-            <div style={{ textAlign: "center", marginBottom: 28 }}>
-              <img src="https://www.ucalp.edu.ar/wp-content/uploads/2016/08/apple-touch-icon.png" alt="UCALP" style={{ width: 56, height: 56, borderRadius: "50%", marginBottom: 14, boxShadow: "0 2px 8px rgba(183,28,28,0.2)" }} />
+          <div style={{ width: "100%", maxWidth: 400, background: "#fff", borderRadius: 20, padding: "40px 36px 32px", boxShadow: "0 20px 60px rgba(0,0,0,0.3)", animation: "fadeIn 0.4s ease" }}>
+            <div style={{ textAlign: "center", marginBottom: 32 }}>
+              <img src="https://www.ucalp.edu.ar/wp-content/uploads/2016/08/apple-touch-icon.png" alt="UCALP" style={{ width: 60, height: 60, borderRadius: "50%", marginBottom: 16, boxShadow: "0 2px 8px rgba(183,28,28,0.2)" }} />
               <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 22, fontWeight: 800, color: C.red }}>Equivalencias UCALP</div>
-              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Lic. en Gobernanza de Datos</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Lic. en Gobernanza de Datos · Fac. Cs. Exactas e Ingeniería</div>
             </div>
 
-            {showLoginForm ? (
-              <>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: C.textSecondary, display: "block", marginBottom: 5 }}>Email institucional</label>
-                  <input
-                    type="email" placeholder="usuario@ucalp.edu.ar"
-                    value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && handleLogin()}
-                    style={{ width: "100%", padding: "11px 14px", borderRadius: 9, border: `1.5px solid ${C.border}`, fontSize: 14, boxSizing: "border-box", outline: "none" }}
-                  />
-                </div>
-                <div style={{ marginBottom: 18 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: C.textSecondary, display: "block", marginBottom: 5 }}>Contraseña</label>
-                  <input
-                    type="password" placeholder="••••••••"
-                    value={loginPassword} onChange={e => setLoginPassword(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && handleLogin()}
-                    style={{ width: "100%", padding: "11px 14px", borderRadius: 9, border: `1.5px solid ${C.border}`, fontSize: 14, boxSizing: "border-box", outline: "none" }}
-                  />
-                </div>
-                {loginError && (
-                  <div style={{ marginBottom: 14, padding: "9px 12px", borderRadius: 8, background: loginError.startsWith("✓") ? C.greenSoft : C.redSoft, color: loginError.startsWith("✓") ? C.green : C.redAccent, fontSize: 13 }}>
-                    {loginError}
-                  </div>
-                )}
-                <button onClick={handleLogin} disabled={loginLoading || !loginEmail || !loginPassword} style={{
-                  width: "100%", padding: "12px", borderRadius: 9, border: "none", cursor: "pointer",
-                  background: C.red, color: "#fff", fontSize: 15, fontWeight: 700,
-                  fontFamily: "'Outfit', sans-serif", opacity: (loginLoading || !loginEmail || !loginPassword) ? 0.6 : 1
-                }}>
-                  {loginLoading ? "Ingresando..." : "Ingresar"}
-                </button>
-                <button onClick={() => { setShowLoginForm(false); setLoginError(""); }} style={{ width: "100%", marginTop: 10, padding: "9px", background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 12 }}>
-                  Olvidé mi contraseña
-                </button>
-              </>
-            ) : (
-              <>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: C.textSecondary, display: "block", marginBottom: 5 }}>Email</label>
-                  <input type="email" placeholder="usuario@ucalp.edu.ar" value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
-                    style={{ width: "100%", padding: "11px 14px", borderRadius: 9, border: `1.5px solid ${C.border}`, fontSize: 14, boxSizing: "border-box" }} />
-                </div>
-                {loginError && (
-                  <div style={{ marginBottom: 14, padding: "9px 12px", borderRadius: 8, background: loginError.startsWith("✓") ? C.greenSoft : C.redSoft, color: loginError.startsWith("✓") ? C.green : C.redAccent, fontSize: 13 }}>
-                    {loginError}
-                  </div>
-                )}
-                <button onClick={handleResetPassword} style={{ width: "100%", padding: "12px", borderRadius: 9, border: "none", cursor: "pointer", background: C.red, color: "#fff", fontSize: 14, fontWeight: 700 }}>
-                  Enviar link de recuperación
-                </button>
-                <button onClick={() => { setShowLoginForm(true); setLoginError(""); }} style={{ width: "100%", marginTop: 10, padding: "9px", background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 12 }}>
-                  ← Volver al login
-                </button>
-              </>
+            {loginError && (
+              <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: C.redSoft, color: C.redAccent, fontSize: 13, textAlign: "center" }}>
+                {loginError}
+              </div>
             )}
 
-            {/* If Supabase not yet configured, show config fields */}
-            {!(loadData("eq-supabase-url","") && loadData("eq-supabase-key","")) && (
-              <details style={{ marginTop: 20 }}>
-                <summary style={{ fontSize: 11, color: C.textMuted, cursor: "pointer", userSelect: "none" }}>⚙️ Configurar Supabase</summary>
-                <div style={{ marginTop: 10 }}>
-                  <input placeholder="https://xxxx.supabase.co" style={{ width: "100%", padding: "8px 10px", borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 11, boxSizing: "border-box", marginBottom: 6, fontFamily: "monospace" }}
-                    onBlur={e => { if(e.target.value) { saveData("eq-supabase-url", e.target.value); setSupabaseUrl(e.target.value); resetSupabaseClient(); }}} />
-                  <input placeholder="eyJhbGciOiJ..." style={{ width: "100%", padding: "8px 10px", borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 11, boxSizing: "border-box", fontFamily: "monospace" }}
-                    onBlur={e => { if(e.target.value) { saveData("eq-supabase-key", e.target.value); setSupabaseKey(e.target.value); resetSupabaseClient(); window.location.reload(); }}} />
-                  <div style={{ fontSize: 10, color: C.textMuted, marginTop: 6 }}>Supabase → Settings → API → Project URL y anon key pública</div>
-                </div>
-              </details>
-            )}
+            {/* Botón Google */}
+            <button onClick={async () => {
+              setLoginError(""); setLoginLoading(true);
+              const sb = getSupabaseClient();
+              if (!sb) { setLoginError("Error de configuración."); setLoginLoading(false); return; }
+              const { error } = await sb.auth.signInWithOAuth({
+                provider: "google",
+                options: {
+                  redirectTo: window.location.origin,
+                  queryParams: { hd: "ucalpvirtual.edu.ar" } // restringe a dominio UCALP (opcional)
+                }
+              });
+              if (error) { setLoginError(error.message); setLoginLoading(false); }
+            }} disabled={loginLoading} style={{
+              width: "100%", padding: "13px 16px", borderRadius: 10,
+              border: "1.5px solid #E0E0E0", background: "#fff",
+              cursor: loginLoading ? "wait" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+              fontSize: 15, fontWeight: 600, color: "#3C4043",
+              boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+              transition: "box-shadow 0.2s",
+              opacity: loginLoading ? 0.7 : 1
+            }}>
+              {/* Google SVG icon */}
+              <svg width="20" height="20" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                <path fill="none" d="M0 0h48v48H0z"/>
+              </svg>
+              {loginLoading ? "Redirigiendo..." : "Continuar con Google"}
+            </button>
 
-            <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.borderLight}`, fontSize: 11, color: C.textMuted, textAlign: "center" }}>
+            <div style={{ marginTop: 16, fontSize: 11, color: C.textMuted, textAlign: "center", lineHeight: 1.5 }}>
+              Usá tu cuenta institucional <strong>@ucalpvirtual.edu.ar</strong>
+            </div>
+
+            <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${C.borderLight}`, fontSize: 11, color: C.textMuted, textAlign: "center" }}>
               Universidad Católica de La Plata · Fac. de Cs. Exactas e Ingeniería
             </div>
           </div>
