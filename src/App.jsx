@@ -1337,7 +1337,8 @@ export default function EquivalenciasApp() {
   const [tablaEditMode, setTablaEditMode] = useState(false);
   const [tablaEditColors, setTablaEditColors] = useState({}); // overrides: key -> value
   const [tablaSaving, setTablaSaving] = useState(false);
-  const [savedTablas, setSavedTablas] = useState([]); // loaded from Supabase
+  const [savedTablas, setSavedTablas] = useState([]);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   // Supabase config
   const [supabaseUrl, setSupabaseUrl] = useState("");
   const [supabaseKey, setSupabaseKey] = useState("");
@@ -1360,20 +1361,21 @@ export default function EquivalenciasApp() {
     const initAuth = async () => {
       const sb = getSupabaseClient();
       if (!sb) { setAuthLoading(false); return; }
-      // Get current session
       const { data: { session } } = await sb.auth.getSession();
       setAuthSession(session);
       if (session?.user) {
         const { data: profile } = await sb.from("profiles").select("*").eq("id", session.user.id).single();
         setAuthProfile(profile);
+        // Load API key from profile if available
+        if (profile?.openrouter_key) { setApiKey(profile.openrouter_key); saveData("eq-apikey-v2", profile.openrouter_key); }
       }
       setAuthLoading(false);
-      // Listen for auth changes
       sb.auth.onAuthStateChange(async (event, session) => {
         setAuthSession(session);
         if (session?.user) {
           const { data: profile } = await sb.from("profiles").select("*").eq("id", session.user.id).single();
           setAuthProfile(profile);
+          if (profile?.openrouter_key) { setApiKey(profile.openrouter_key); saveData("eq-apikey-v2", profile.openrouter_key); }
         } else {
           setAuthProfile(null);
         }
@@ -1390,7 +1392,15 @@ export default function EquivalenciasApp() {
     link2.href = "https://www.ucalp.edu.ar/wp-content/uploads/2016/08/apple-touch-icon.png";
   }, []);
 
-  const saveApiKey = (k) => { setApiKey(k); saveData("eq-apikey-v2", k); };
+  const saveApiKey = (k) => {
+    setApiKey(k);
+    saveData("eq-apikey-v2", k);
+    // Also persist to Supabase profile so it syncs across devices
+    const sb = getSupabaseClient();
+    if (sb && authSession?.user) {
+      sb.from("profiles").update({ openrouter_key: k }).eq("id", authSession.user.id).then(() => {});
+    }
+  };
   const saveModel = (m) => { setSelectedModel(m); saveData("eq-model-v2", m); };
 
   // ── Auth helpers ──
@@ -1472,6 +1482,24 @@ export default function EquivalenciasApp() {
       };
       setResult(record);
       const updated = [record, ...analyses]; setAnalyses(updated); saveData("eq-analyses-v2", updated);
+      // Save to Supabase analisis_materias
+      const sb = getSupabaseClient();
+      if (sb && authSession?.user) {
+        sb.from("analisis_materias").insert({
+          origin_university:   uni,
+          origin_career:       car,
+          origin_subject:      originSubject,
+          origin_program:      originProgram.substring(0, 3000),
+          ucalp_subject_key:   targetSubject,
+          ucalp_subject_name:  prog.name,
+          clasificacion:       parsed.clasificacion,
+          es_provisional:      !prog.hasProgram,
+          porcentaje_cobertura: parsed.porcentaje_cobertura_global,
+          analisis_json:       parsed,
+          modelo_ia:           selectedModel,
+          created_by:          authSession.user.id
+        }).then(() => {});
+      }
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }), 200);
     } catch (e) { setError(e.message); } finally { setAnalyzing(false); }
   };
@@ -1682,18 +1710,86 @@ export default function EquivalenciasApp() {
                   fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap"
                 }}>{t.icon} {t.label}</button>
               ))}
-              {/* User badge */}
+              {/* Profile dropdown */}
               {authSession && authProfile && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 8, padding: "5px 10px", borderRadius: 8, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#fff" }}>{authProfile.nombre} {authProfile.apellido}</div>
-                    <div style={{ fontSize: 9, opacity: 0.8, background: "rgba(255,255,255,0.2)", padding: "1px 6px", borderRadius: 4, marginTop: 1 }}>
-                      {ROL_LABELS[rol]?.label || rol}
+                <div style={{ position: "relative", marginLeft: 8 }}>
+                  <button onClick={() => setShowProfileMenu(m => !m)} style={{
+                    display: "flex", alignItems: "center", gap: 8, padding: "5px 10px 5px 6px",
+                    borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)",
+                    background: showProfileMenu ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.1)",
+                    cursor: "pointer", color: "#fff", transition: "background 0.15s"
+                  }}>
+                    {/* Avatar */}
+                    {authProfile.avatar_url
+                      ? <img src={authProfile.avatar_url} style={{ width: 28, height: 28, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.4)" }} />
+                      : <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>
+                          {(authProfile.nombre?.[0] || authProfile.email?.[0] || "?").toUpperCase()}
+                        </div>
+                    }
+                    <div style={{ textAlign: "left" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.2 }}>
+                        {authProfile.nombre || authProfile.email?.split("@")[0]}
+                      </div>
+                      <div style={{ fontSize: 9, opacity: 0.75, background: "rgba(255,255,255,0.15)", padding: "1px 5px", borderRadius: 3, marginTop: 1 }}>
+                        {ROL_LABELS[rol]?.label || rol}
+                      </div>
                     </div>
-                  </div>
-                  <button onClick={handleLogout} title="Cerrar sesión" style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontSize: 11 }}>
-                    ↩
+                    <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 2 }}>{showProfileMenu ? "▴" : "▾"}</span>
                   </button>
+
+                  {/* Dropdown menu */}
+                  {showProfileMenu && (
+                    <div onClick={() => setShowProfileMenu(false)} style={{
+                      position: "fixed", inset: 0, zIndex: 999
+                    }}>
+                      <div onClick={e => e.stopPropagation()} style={{
+                        position: "absolute", top: "calc(100% + 8px)", right: 0,
+                        background: "#fff", borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+                        border: "1px solid #E0E0E0", minWidth: 220, overflow: "hidden", zIndex: 1000
+                      }}>
+                        {/* Profile info */}
+                        <div style={{ padding: "14px 16px", borderBottom: "1px solid #F0F0F0", background: "#FAFAFA" }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#212121" }}>
+                            {authProfile.nombre} {authProfile.apellido}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#757575", marginTop: 2 }}>{authProfile.email}</div>
+                          <div style={{ marginTop: 6 }}>
+                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: ROL_LABELS[rol]?.bg, color: ROL_LABELS[rol]?.color, fontWeight: 700 }}>
+                              {ROL_LABELS[rol]?.label || rol}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Menu items */}
+                        <div style={{ padding: "6px 0" }}>
+                          <button onClick={() => { setTab("settings"); setShowProfileMenu(false); }} style={{
+                            width: "100%", padding: "10px 16px", textAlign: "left", border: "none",
+                            background: "none", cursor: "pointer", fontSize: 13, color: "#424242",
+                            display: "flex", alignItems: "center", gap: 10
+                          }}>
+                            <span>⚙️</span> Configuración
+                          </button>
+                          {isDirector && (
+                            <button onClick={() => { setTab("settings"); setShowProfileMenu(false); }} style={{
+                              width: "100%", padding: "10px 16px", textAlign: "left", border: "none",
+                              background: "none", cursor: "pointer", fontSize: 13, color: "#424242",
+                              display: "flex", alignItems: "center", gap: 10
+                            }}>
+                              <span>👥</span> Gestión de usuarios
+                            </button>
+                          )}
+                          <div style={{ height: 1, background: "#F0F0F0", margin: "4px 0" }} />
+                          <button onClick={() => { handleLogout(); setShowProfileMenu(false); }} style={{
+                            width: "100%", padding: "10px 16px", textAlign: "left", border: "none",
+                            background: "none", cursor: "pointer", fontSize: 13, color: "#B71C1C",
+                            display: "flex", alignItems: "center", gap: 10, fontWeight: 600
+                          }}>
+                            <span>↩</span> Cerrar sesión
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </nav>
@@ -2962,108 +3058,6 @@ export default function EquivalenciasApp() {
             </div>
           );
         })()}
-
-        {/* ═══════ PLANS ═══════ */}
-        {tab === "plans" && (
-          <div style={{ animation: "fadeIn 0.3s ease" }}>
-            <h2 style={{ fontFamily: "'Outfit', sans-serif", fontSize: 24, color: C.text, marginBottom: 4, fontWeight: 700 }}>Importar planes de estudio</h2>
-            <p style={{ color: C.textSecondary, fontSize: 14, marginBottom: 22 }}>Importá planes de otras universidades para guardarlos y usarlos en análisis.</p>
-
-            <div style={{ ...cardStyle, marginBottom: 20 }}>
-              <SectionTitle icon="📊" color={C.green} label="Importar desde Google Sheets" />
-              <p style={{ fontSize: 12, color: C.textSecondary, marginBottom: 12, lineHeight: 1.5 }}>
-                Si tenés los planes de estudio en una planilla de Google Sheets, compartila como "Cualquier persona con el enlace" y pegá la URL acá.
-              </p>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input placeholder="https://docs.google.com/spreadsheets/d/..." value={sheetsUrl} onChange={e => setSheetsUrl(e.target.value)} style={{ ...inputStyle, flex: 1, fontSize: 12 }} />
-                <button onClick={handleSheetsImport} disabled={sheetsLoading} style={{ ...btnPrimary, padding: "10px 16px", fontSize: 12, whiteSpace: "nowrap", background: C.green, opacity: sheetsLoading ? 0.6 : 1 }}>
-                  {sheetsLoading ? "⚙️..." : "📊 Importar"}
-                </button>
-              </div>
-              {sheetsData && (
-                <div style={{ marginTop: 14, padding: 14, borderRadius: 8, background: C.greenSoft, border: `1px solid ${C.greenBorder}` }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.green, marginBottom: 8 }}>{sheetsData.length} filas importadas</div>
-                  <div style={{ maxHeight: 250, overflow: "auto" }}>
-                    <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
-                      <tbody>
-                        {sheetsData.slice(0, 30).map((row, i) => (
-                          <tr key={i} style={{ background: i === 0 ? C.greenSoft : i % 2 === 0 ? C.bg : C.surface }}>
-                            {row.map((cell, j) => (
-                              <td key={j} style={{ padding: "4px 8px", borderBottom: `1px solid ${C.borderLight}`, color: i === 0 ? C.green : C.text, fontWeight: i === 0 ? 600 : 400 }}>
-                                {cell}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {sheetsData.length > 30 && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>... y {sheetsData.length - 30} filas más</div>}
-                  </div>
-                  <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                    <button onClick={() => {
-                      // Extract subject names from first column (skip header)
-                      const subjects = sheetsData.slice(1).map(r => r[0]).filter(s => s && s.length > 2);
-                      const uni = originUniversity.includes("Otra") ? customUniversity : originUniversity;
-                      const car = originCareer.includes("Otra") ? customCareer : originCareer;
-                      savePlan(uni, car, subjects.map(s => ({ name: s, details: "" })), sheetsUrl);
-                      setSheetsData(null); setSheetsUrl("");
-                    }} style={{ ...btnPrimary, padding: "8px 16px", fontSize: 12, background: C.green }}>
-                      💾 Guardar materias (1era columna)
-                    </button>
-                    {apiKey && (
-                      <button onClick={async () => {
-                        setAiExtracting(true); setError(null);
-                        try {
-                          const text = sheetsData.map(r => r.join(" | ")).join("\n");
-                          const subjects = await aiExtractSubjects(text, apiKey, selectedModel);
-                          const uni = originUniversity.includes("Otra") ? customUniversity : originUniversity;
-                          const car = originCareer.includes("Otra") ? customCareer : originCareer;
-                          savePlan(uni, car, subjects.map(s => ({ name: s, details: "" })), sheetsUrl);
-                          setSheetsData(null); setSheetsUrl("");
-                        } catch (e) { setError("IA: " + e.message); } finally { setAiExtracting(false); }
-                      }} disabled={aiExtracting} style={{ ...btnOutline, fontSize: 12, padding: "8px 16px", borderColor: "rgba(139,92,246,0.3)", color: "#7C3AED" }}>
-                        {aiExtracting ? "⚙️..." : "🤖 Extraer con IA"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Saved Plans */}
-            {savedPlans.length > 0 && (
-              <div style={{ marginTop: 24 }}>
-                <h3 style={{ fontFamily: "'Outfit', sans-serif", fontSize: 18, color: C.text, marginBottom: 14, fontWeight: 700 }}>Planes guardados ({savedPlans.length})</h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {savedPlans.map(plan => (
-                    <details key={plan.id} style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: "hidden" }}>
-                      <summary style={{ padding: "14px 18px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 14, fontWeight: 600, color: C.text, listStyle: "none" }}>
-                        <div>
-                          <div style={{ color: C.blue }}>{plan.university} — {plan.career}</div>
-                          <div style={{ fontSize: 12, color: C.textMuted, fontWeight: 400, marginTop: 2 }}>
-                            {plan.subjects.length} materias · {new Date(plan.date).toLocaleDateString("es-AR")}
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                          <button onClick={(e) => { e.preventDefault(); deletePlan(plan.id); }} style={{ ...btnOutline, fontSize: 11, padding: "4px 10px", borderColor: C.redBorder, color: C.redAccent }}>🗑</button>
-                          <span style={{ fontSize: 12, color: C.textMuted }}>▾</span>
-                        </div>
-                      </summary>
-                      <div style={{ padding: "0 18px 18px" }}>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {plan.subjects.map((s, i) => (
-                            <div key={i} style={{ padding: "6px 12px", borderRadius: 6, background: C.bg, border: `1px solid ${C.borderLight}`, fontSize: 12, color: C.text }}>{s.name}</div>
-                          ))}
-                        </div>
-                        {plan.url && <div style={{ marginTop: 10, fontSize: 11, color: C.textMuted }}>Fuente: <a href={plan.url} target="_blank" rel="noopener" style={{ color: C.blue }}>{plan.url}</a></div>}
-                      </div>
-                    </details>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* ═══════ PROGRAMS ═══════ */}
         {tab === "programs" && (
