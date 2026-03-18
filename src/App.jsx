@@ -1447,10 +1447,10 @@ export default function EquivalenciasApp() {
   };
 
   const ROL_LABELS = {
-    director:      { label: "Director/a", color: C.red,         bg: C.redSoft },
+    director:      { label: "Director", color: C.red,         bg: C.redSoft },
     secretaria:    { label: "Secretaría", color: "#6D28D9",     bg: "#EDE9FE" },
-    decano:        { label: "Decano/a",   color: "#1565C0",     bg: "#E3F2FD" },
-    otro_director: { label: "Dir. (lectura)", color: "#065F46",     bg: "#D1FAE5" },
+    decano:        { label: "Decano",   color: "#1565C0",     bg: "#E3F2FD" },
+    otro_director: { label: "Director. (lectura)", color: "#065F46",     bg: "#D1FAE5" },
     lectura:       { label: "Lectura",    color: C.textSecondary, bg: C.bg },
   };
 
