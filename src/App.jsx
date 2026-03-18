@@ -1349,8 +1349,8 @@ export default function EquivalenciasApp() {
     const model = loadData("eq-model-v2", MODELS[0].id);
     const plans = loadData("eq-plans-v2", []);
     setAnalyses(saved); setApiKey(key); setSelectedModel(model); setSavedPlans(plans); setLoading(false);
-    const sbUrl = loadData("eq-supabase-url", "");
-    const sbKey = loadData("eq-supabase-key", "");
+    const sbUrl = import.meta.env.VITE_SUPABASE_URL || loadData("eq-supabase-url", "");
+    const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY || loadData("eq-supabase-key", "");
     const cache = loadData("eq-tabla-cache", {});
     if (sbUrl) setSupabaseUrl(sbUrl);
     if (sbKey) setSupabaseKey(sbKey);
@@ -1435,7 +1435,11 @@ export default function EquivalenciasApp() {
   };
 
   // ── Show login screen if Supabase configured but not logged in ──
-  const sbConfigured = !!(supabaseUrl || loadData("eq-supabase-url", ""));
+  const sbConfigured = !!(
+    import.meta.env.VITE_SUPABASE_URL ||
+    supabaseUrl ||
+    loadData("eq-supabase-url", "")
+  );
   const needsLogin = sbConfigured && !authLoading && !authSession;
 
   const runAnalysis = async () => {
@@ -3167,111 +3171,120 @@ export default function EquivalenciasApp() {
 
         {/* ═══════ SETTINGS ═══════ */}
         {tab === "settings" && (
-          <div style={{ maxWidth: 580, animation: "fadeIn 0.3s ease" }}>
-            <h2 style={{ fontFamily: "'Outfit', sans-serif", fontSize: 24, color: C.text, marginBottom: 22, fontWeight: 700 }}>Configuración</h2>
-
-            <div style={{ ...cardStyle, marginBottom: 18 }}>
-              <SectionTitle icon="🔑" color={C.redAccent} label="API Key de OpenRouter" />
-              <p style={{ fontSize: 13, color: C.textSecondary, marginBottom: 14, lineHeight: 1.5 }}>Necesitás una API key de <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" style={{ color: C.red, fontWeight: 600, textDecoration: "none" }}>openrouter.ai/keys</a> para ejecutar los análisis. El plan gratuito incluye ~50 consultas/día con modelos gratuitos.</p>
-              <input type="password" placeholder="sk-or-v1-..." value={apiKey} onChange={e => saveApiKey(e.target.value)} style={{ ...inputStyle, fontFamily: "monospace" }} />
-              {apiKey && <div style={{ marginTop: 6, fontSize: 12, color: C.green, fontWeight: 500 }}>✓ Configurada ({apiKey.substring(0, 14)}...)</div>}
+          <div style={{ animation: "fadeIn 0.3s ease" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+              <h2 style={{ fontFamily: "'Outfit', sans-serif", fontSize: 24, color: C.text, margin: 0, fontWeight: 700 }}>Configuración</h2>
             </div>
 
-            {isDirector && (
-              <div style={{ ...cardStyle, marginBottom: 18 }}>
-                <SectionTitle icon="👥" color={C.red} label="Gestión de usuarios" />
-                <p style={{ fontSize: 13, color: C.textSecondary, marginBottom: 14, lineHeight: 1.5 }}>
-                  Invitá nuevos usuarios desde <strong>Supabase Dashboard → Authentication → Users → Invite user</strong>.
-                  Luego asigná el rol acá o directamente en Supabase con:
-                  <code style={{ display: "block", background: C.bg, padding: "8px 12px", borderRadius: 6, fontSize: 11, marginTop: 8, fontFamily: "monospace" }}>
-                    update profiles set rol = 'secretaria' where email = 'usuario@ucalp.edu.ar';
-                  </code>
-                </p>
-                <div style={{ fontSize: 12, fontWeight: 700, color: C.textSecondary, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.4px" }}>Roles disponibles</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {[
-                    { rol: "director",      desc: "Acceso total: leer, escribir, gestionar usuarios y configuración" },
-                    { rol: "secretaria",    desc: "Leer todo + crear y editar alumnos, planes y reportes" },
-                    { rol: "otro_director", desc: "Leer todo + crear y editar tablas y análisis de materias" },
-                    { rol: "decano",        desc: "Solo lectura — ve todo pero no puede modificar nada" },
-                    { rol: "lectura",       desc: "Solo lectura (rol por defecto al registrarse)" },
-                  ].map(r => {
-                    const rs = ROL_LABELS[r.rol] || {};
-                    return (
-                      <div key={r.rol} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 8, background: C.bg, border: `1px solid ${C.borderLight}` }}>
-                        <span style={{ padding: "2px 10px", borderRadius: 5, background: rs.bg || C.bg, color: rs.color || C.text, fontSize: 11, fontWeight: 700, minWidth: 90, textAlign: "center" }}>{r.rol}</span>
-                        <span style={{ fontSize: 12, color: C.textSecondary }}>{r.desc}</span>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, alignItems: "start" }}>
+
+              {/* Columna izquierda */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+
+                {/* Usuario actual */}
+                {authSession && authProfile && (
+                  <div style={{ ...cardStyle }}>
+                    <SectionTitle icon="👤" color={C.red} label="Tu cuenta" />
+                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                      <div style={{ width: 48, height: 48, borderRadius: "50%", background: C.redSoft, border: `2px solid ${C.redBorder}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
+                        {(authProfile.nombre?.[0] || "?").toUpperCase()}
                       </div>
-                    );
-                  })}
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{authProfile.nombre} {authProfile.apellido}</div>
+                        <div style={{ fontSize: 12, color: C.textMuted }}>{authProfile.email}</div>
+                        <div style={{ marginTop: 4 }}>
+                          <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 5, background: ROL_LABELS[rol]?.bg || C.bg, color: ROL_LABELS[rol]?.color || C.text, fontWeight: 700 }}>
+                            {ROL_LABELS[rol]?.label || rol}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={handleLogout} style={{ ...btnOutline, marginTop: 14, width: "100%", fontSize: 12, borderColor: C.redBorder, color: C.redAccent }}>
+                      ↩ Cerrar sesión
+                    </button>
+                  </div>
+                )}
+
+                {/* API Key OpenRouter */}
+                <div style={cardStyle}>
+                  <SectionTitle icon="🔑" color={C.redAccent} label="API Key de OpenRouter" />
+                  <p style={{ fontSize: 13, color: C.textSecondary, marginBottom: 14, lineHeight: 1.5 }}>
+                    Necesitás una key de <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" style={{ color: C.red, fontWeight: 600, textDecoration: "none" }}>openrouter.ai/keys</a> para los análisis. El plan gratuito incluye ~50 consultas/día.
+                  </p>
+                  <input type="password" placeholder="sk-or-v1-..." value={apiKey} onChange={e => saveApiKey(e.target.value)} style={{ ...inputStyle, fontFamily: "monospace" }} />
+                  {apiKey && <div style={{ marginTop: 6, fontSize: 12, color: C.green, fontWeight: 500 }}>✓ Configurada ({apiKey.substring(0, 14)}...)</div>}
+                </div>
+
+                {/* Datos almacenados */}
+                <div style={cardStyle}>
+                  <SectionTitle icon="📊" color={C.textSecondary} label="Datos almacenados" />
+                  <div style={{ fontSize: 13, color: C.textSecondary, marginBottom: 12 }}>
+                    {analyses.length} análisis · {stats.universities} universidades · {savedPlans.length} planes guardados
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {analyses.length > 0 && <>
+                      <button onClick={exportCSV} style={{ ...btnOutline, fontSize: 12 }}>📥 Exportar CSV</button>
+                      <button onClick={clearAll} style={{ ...btnOutline, borderColor: C.redBorder, color: C.redAccent, fontSize: 12 }}>🗑 Análisis</button>
+                    </>}
+                    <button onClick={() => { if (confirm("¿Limpiar el caché de la Tabla Provisoria?")) { setTablaCache({}); saveData("eq-tabla-cache", {}); }}} style={{ ...btnOutline, fontSize: 12 }}>🗑 Caché Tabla</button>
+                  </div>
                 </div>
               </div>
-            )}
 
-            <div style={{ ...cardStyle, marginBottom: 18 }}>
-              <SectionTitle icon="🤖" color={C.textSecondary} label="Modelo por defecto" />
-              <p style={{ fontSize: 12, color: C.textSecondary, marginBottom: 10 }}>Para la Tabla Provisoria se recomienda un modelo gratuito (Trinity o Gemini Flash) ya que usa 1 consulta por análisis batch completo.</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {MODELS.map(m => (
-                  <button key={m.id} onClick={() => saveModel(m.id)} style={{
-                    padding: "12px 14px", borderRadius: 8, cursor: "pointer", textAlign: "left", fontSize: 13, transition: "all 0.15s", border: `1.5px solid`,
-                    borderColor: selectedModel === m.id ? C.red : C.border,
-                    background: selectedModel === m.id ? C.redSoft : C.surface,
-                    color: selectedModel === m.id ? C.redAccent : C.textSecondary,
-                  }}>
-                    <span style={{ marginRight: 6 }}>{m.icon}</span>
-                    <span style={{ fontWeight: 600 }}>{m.label}</span>
-                    <span style={{ marginLeft: 8, fontSize: 11, color: C.textMuted }}>{m.id}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+              {/* Columna derecha */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
 
-            <div style={{ ...cardStyle, marginBottom: 18 }}>
-              <SectionTitle icon="🗄️" color="#3ECF8E" label="Supabase (persistencia en la nube)" />
-              <p style={{ fontSize: 13, color: C.textSecondary, marginBottom: 14, lineHeight: 1.5 }}>
-                Conectá tu proyecto de <a href="https://supabase.com" target="_blank" rel="noopener" style={{ color: "#3ECF8E", fontWeight: 600, textDecoration: "none" }}>Supabase</a> para que los planes scrapeados se guarden en la nube y estén disponibles en cualquier dispositivo.
-                Creá una tabla <code style={{ background: C.bg, padding: "1px 5px", borderRadius: 3, fontSize: 11 }}>saved_plans</code> con columnas: <code style={{ background: C.bg, padding: "1px 5px", borderRadius: 3, fontSize: 11 }}>university, career, plan_url, subjects (text), created_at</code>.
-              </p>
-              <Label>URL del proyecto (ej: https://xxxx.supabase.co)</Label>
-              <input placeholder="https://tu-proyecto.supabase.co" value={supabaseUrl}
-                onChange={e => { setSupabaseUrl(e.target.value); saveData("eq-supabase-url", e.target.value); }}
-                style={{ ...inputStyle, fontFamily: "monospace", fontSize: 12 }} />
-              <Label>Anon key (pública)</Label>
-              <input type="password" placeholder="eyJhbGciOiJIUzI1NiIs..." value={supabaseKey}
-                onChange={e => { setSupabaseKey(e.target.value); saveData("eq-supabase-key", e.target.value); }}
-                style={{ ...inputStyle, fontFamily: "monospace", fontSize: 12 }} />
-              {supabaseUrl && supabaseKey && (
-                <div style={{ marginTop: 8 }}>
-                  <div style={{ fontSize: 12, color: "#3ECF8E", fontWeight: 500 }}>✓ Supabase configurado</div>
-                  <button onClick={async () => {
-                    const plans = await supabaseLoadPlans(supabaseUrl, supabaseKey);
-                    if (plans) {
-                      setSavedPlans(plans);
-                      saveData("eq-plans-v2", plans);
-                      alert(`✓ ${plans.length} planes cargados desde Supabase.`);
-                    } else {
-                      alert("⚠ No se pudieron cargar los planes. Verificá la URL, la key y que la tabla exista.');");
-                    }
-                  }} style={{ ...btnOutline, marginTop: 8, borderColor: "#3ECF8E", color: "#3ECF8E", fontSize: 12 }}>
-                    🔄 Cargar planes desde Supabase
-                  </button>
+                {/* Modelo */}
+                <div style={cardStyle}>
+                  <SectionTitle icon="🤖" color={C.textSecondary} label="Modelo por defecto" />
+                  <p style={{ fontSize: 12, color: C.textSecondary, marginBottom: 10 }}>Para la Tabla Provisoria se recomienda un modelo gratuito (Trinity o Gemini Flash) — usa 1 consulta por análisis batch.</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {MODELS.map(m => (
+                      <button key={m.id} onClick={() => saveModel(m.id)} style={{
+                        padding: "10px 14px", borderRadius: 8, cursor: "pointer", textAlign: "left", fontSize: 13,
+                        border: `1.5px solid ${selectedModel === m.id ? C.red : C.border}`,
+                        background: selectedModel === m.id ? C.redSoft : C.surface,
+                        color: selectedModel === m.id ? C.redAccent : C.textSecondary,
+                      }}>
+                        <span style={{ marginRight: 6 }}>{m.icon}</span>
+                        <span style={{ fontWeight: 600 }}>{m.label}</span>
+                        <span style={{ marginLeft: 8, fontSize: 10, color: C.textMuted }}>{m.id}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              )}
-            </div>
 
-            <div style={cardStyle}>
-              <SectionTitle icon="📊" color={C.textSecondary} label="Datos almacenados" />
-              <div style={{ fontSize: 13, color: C.textSecondary, marginBottom: 12 }}>
-                {analyses.length} análisis · {stats.universities} universidades · {savedPlans.length} planes guardados
+                {/* Gestión de usuarios — solo director */}
+                {isDirector && (
+                  <div style={cardStyle}>
+                    <SectionTitle icon="👥" color={C.red} label="Gestión de usuarios" />
+                    <p style={{ fontSize: 13, color: C.textSecondary, marginBottom: 12, lineHeight: 1.5 }}>
+                      Invitá usuarios desde <strong>Supabase → Authentication → Users → Invite user</strong>. Luego asigná el rol con SQL:
+                    </p>
+                    <code style={{ display: "block", background: C.bg, padding: "10px 12px", borderRadius: 7, fontSize: 11, fontFamily: "monospace", lineHeight: 1.7, color: C.text, border: `1px solid ${C.borderLight}` }}>
+                      update profiles set rol = 'decano'<br/>
+                      where email = 'decano@ucalp.edu.ar';
+                    </code>
+                    <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+                      {[
+                        { rol: "director",      desc: "Acceso total + gestión de usuarios" },
+                        { rol: "decano",        desc: "Acceso total (lectura y escritura)" },
+                        { rol: "secretaria",    desc: "Acceso total (lectura y escritura)" },
+                        { rol: "otro_director", desc: "Solo lectura" },
+                      ].map(r => {
+                        const rs = ROL_LABELS[r.rol] || {};
+                        return (
+                          <div key={r.rol} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 7, background: C.bg, border: `1px solid ${C.borderLight}` }}>
+                            <span style={{ padding: "2px 10px", borderRadius: 5, background: rs.bg, color: rs.color, fontSize: 11, fontWeight: 700, minWidth: 80, textAlign: "center", flexShrink: 0 }}>{r.rol}</span>
+                            <span style={{ fontSize: 12, color: C.textSecondary }}>{r.desc}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
               </div>
-              {analyses.length > 0 && (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={exportCSV} style={btnOutline}>📥 Exportar análisis CSV</button>
-                  <button onClick={clearAll} style={{ ...btnOutline, borderColor: C.redBorder, color: C.redAccent }}>🗑 Eliminar análisis</button>
-                  <button onClick={() => { if (confirm("¿Limpiar el caché de análisis de la Tabla Provisoria?")) { setTablaCache({}); saveData("eq-tabla-cache", {}); }}} style={{ ...btnOutline, fontSize: 12 }}>🗑 Limpiar caché Tabla</button>
-                </div>
-              )}
             </div>
           </div>
         )}
