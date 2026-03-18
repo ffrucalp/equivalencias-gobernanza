@@ -1394,10 +1394,10 @@ export default function EquivalenciasApp() {
     document.title = "Equivalencias · UCALP Gobernanza de Datos";
     let link = document.querySelector("link[rel~='icon']");
     if (!link) { link = document.createElement("link"); link.rel = "icon"; link.type = "image/png"; document.head.appendChild(link); }
-    link.href = "/favicon-ucalp.png";
+    link.href = "/favicon-ucalp-180.png";
     let link2 = document.querySelector("link[rel='apple-touch-icon']");
     if (!link2) { link2 = document.createElement("link"); link2.rel = "apple-touch-icon"; document.head.appendChild(link2); }
-    link2.href = "/favicon-ucalp.png";
+    link2.href = "/favicon-ucalp-180.png";
   }, []);
 
   // Persist tabla edit state on change
@@ -1640,7 +1640,7 @@ export default function EquivalenciasApp() {
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: `linear-gradient(135deg, ${C.red} 0%, #7B1E1E 100%)`, padding: 24 }}>
           <div style={{ width: "100%", maxWidth: 400, background: "#fff", borderRadius: 20, padding: "40px 36px 32px", boxShadow: "0 20px 60px rgba(0,0,0,0.3)", animation: "fadeIn 0.4s ease" }}>
             <div style={{ textAlign: "center", marginBottom: 32 }}>
-              <img src="/favicon-ucalp.png" alt="UCALP" style={{ width: 60, height: 60, borderRadius: "50%", marginBottom: 16, boxShadow: "0 2px 8px rgba(183,28,28,0.2)" }} />
+              <img src="/favicon-ucalp-180.png" alt="UCALP" style={{ width: 60, height: 60, borderRadius: "50%", marginBottom: 16, boxShadow: "0 2px 8px rgba(183,28,28,0.2)" }} />
               <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 22, fontWeight: 800, color: C.red }}>Gestión de Equivalencias</div>
               <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Licenciatura en Gobernanza de Datos</div>
             </div>
@@ -1706,7 +1706,7 @@ export default function EquivalenciasApp() {
           {/* Logo + título */}
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 1px 4px rgba(0,0,0,0.15)" }}>
-              <img src="/favicon-ucalp.png" alt="UCALP" style={{ height: 30, borderRadius: "50%" }} />
+              <img src="/favicon-ucalp-180.png" alt="UCALP" style={{ height: 30, borderRadius: "50%" }} />
             </div>
             <div>
               <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 17, fontWeight: 700, lineHeight: 1.2, letterSpacing: "-0.2px" }}>Gestión de Equivalencias</div>
