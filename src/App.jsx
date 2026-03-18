@@ -1737,11 +1737,16 @@ export default function EquivalenciasApp() {
                 </button>
 
                 {showProfileMenu && (
-                  <div onClick={() => setShowProfileMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 999 }}>
-                    <div onClick={e => e.stopPropagation()} style={{
-                      position: "absolute", top: "calc(100% + 10px)", right: 0,
-                      background: "#fff", borderRadius: 14, boxShadow: "0 10px 40px rgba(0,0,0,0.18)",
-                      border: "1px solid #E8E8E8", minWidth: 240, overflow: "hidden", zIndex: 1000
+                  <>
+                    {/* Overlay para cerrar al hacer click afuera */}
+                    <div onClick={() => setShowProfileMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 998 }} />
+                    {/* Dropdown — fixed para que no quede cortado por overflow */}
+                    <div style={{
+                      position: "fixed",
+                      top: 62,
+                      right: 16,
+                      background: "#fff", borderRadius: 14, boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
+                      border: "1px solid #E8E8E8", minWidth: 240, overflow: "hidden", zIndex: 999
                     }}>
                       <div style={{ padding: "18px 18px 14px", borderBottom: "1px solid #F0F0F0", display: "flex", alignItems: "center", gap: 12 }}>
                         {googleAvatar
@@ -1770,7 +1775,7 @@ export default function EquivalenciasApp() {
                         </button>
                       </div>
                     </div>
-                  </div>
+                  </>
                 )}
               </div>
             );
@@ -1953,29 +1958,19 @@ export default function EquivalenciasApp() {
             if (!sb) { alert("Supabase no configurado."); return; }
             setTablaSaving(true);
             try {
-              const existing = savedTablas.find(t => t.plan_id === selectedPlan.id);
-              if (existing) {
-                const { error } = await sb.from("equivalencias_tablas").update({
-                  colors: effectiveColors,
-                  notes: "",
-                  updated_at: new Date().toISOString()
-                }).eq("id", existing.id);
-                if (error) throw new Error(error.message);
-              } else {
-                const { error } = await sb.from("equivalencias_tablas").insert({
-                  origin_university: selectedPlan.university,
-                  origin_career:     selectedPlan.career,
-                  plan_id:           selectedPlan.id,
-                  colors:            effectiveColors,
-                  created_at:        new Date().toISOString(),
-                  updated_at:        new Date().toISOString()
-                });
-                if (error) throw new Error(error.message);
-              }
-              // Reload from Supabase
+              // Upsert by plan_id — insert or update if already exists
+              const { error } = await sb.from("equivalencias_tablas").upsert({
+                origin_university: selectedPlan.university,
+                origin_career:     selectedPlan.career,
+                plan_id:           selectedPlan.id,
+                colors:            effectiveColors,
+                notes:             "",
+                updated_at:        new Date().toISOString()
+              }, { onConflict: "plan_id" });
+              if (error) throw new Error(error.message);
+              // Reload
               const { data: tablas } = await sb.from("equivalencias_tablas").select("*").order("updated_at", { ascending: false });
               if (tablas) setSavedTablas(tablas.map(r => ({ ...r, colors: typeof r.colors === "string" ? JSON.parse(r.colors) : r.colors })));
-              // Update local cache
               const newCache = { ...tablaCache, [selectedPlan.id]: effectiveColors };
               setTablaCache(newCache);
               saveData("eq-tabla-cache", newCache);
