@@ -1696,129 +1696,133 @@ export default function EquivalenciasApp() {
         </div>
       )}
 
-      {/* ── MAIN APP (only when logged in or Supabase not configured) ── */}
+      {/* ── MAIN APP ── */}
       {!needsLogin && (
-      <div style={{ minHeight: "100vh", background: C.bg }}>
+      <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column" }}>
 
-      {/* ─── HEADER ─── */}
-      <header style={{ background: C.red, color: "#fff", boxShadow: "0 2px 12px rgba(183,28,28,0.25)" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 20px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minHeight: 64, paddingTop: 8, paddingBottom: 8, gap: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-              <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 1px 4px rgba(0,0,0,0.15)" }}>
-                <img src="https://www.ucalp.edu.ar/wp-content/uploads/2016/08/apple-touch-icon.png" alt="UCALP" style={{ height: 34, borderRadius: "50%" }} />
-              </div>
-              <div>
-                <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 18, fontWeight: 700, lineHeight: 1.2, letterSpacing: "-0.2px" }}>Equivalencias UCALP</div>
-                <div style={{ fontSize: 10, opacity: 0.8, letterSpacing: "0.4px", textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginTop: 1 }}>Lic. en Gobernanza de Datos · Fac. Cs. Exactas e Ingeniería</div>
-              </div>
+      {/* ─── TOP HEADER (solo logo + perfil) ─── */}
+      <header style={{ background: C.red, color: "#fff", boxShadow: "0 2px 12px rgba(183,28,28,0.25)", flexShrink: 0, zIndex: 100, position: "sticky", top: 0 }}>
+        <div style={{ padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 58 }}>
+          {/* Logo + título */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 1px 4px rgba(0,0,0,0.15)" }}>
+              <img src="https://www.ucalp.edu.ar/wp-content/uploads/2016/08/apple-touch-icon.png" alt="UCALP" style={{ height: 30, borderRadius: "50%" }} />
             </div>
-            <nav style={{ display: "flex", gap: 1, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
-              {tabData.map(t => (
-                <button key={t.id} onClick={() => setTab(t.id)} style={{
-                  padding: "6px 11px", borderRadius: 6, border: "none", cursor: "pointer",
-                  background: tab === t.id ? "rgba(255,255,255,0.22)" : "transparent",
-                  color: "#fff", fontSize: 12, fontWeight: tab === t.id ? 700 : 400,
-                  transition: "all 0.15s", opacity: tab === t.id ? 1 : 0.78,
-                  fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap"
-                }}>{t.icon} {t.label}</button>
-              ))}
-              {/* Profile dropdown */}
-              {authSession && authProfile && (() => {
-                const googleAvatar = authSession.user?.user_metadata?.avatar_url || authSession.user?.user_metadata?.picture || authProfile.avatar_url;
-                const displayName = authProfile.nombre || authSession.user?.user_metadata?.full_name?.split(" ")[0] || authProfile.email?.split("@")[0];
-                return (
-                <div style={{ position: "relative", marginLeft: 8 }}>
-                  <button onClick={() => setShowProfileMenu(m => !m)} style={{
-                    display: "flex", alignItems: "center", gap: 8, padding: "4px 10px 4px 4px",
-                    borderRadius: 24, border: "1.5px solid rgba(255,255,255,0.3)",
-                    background: showProfileMenu ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.12)",
-                    cursor: "pointer", color: "#fff", transition: "background 0.15s"
-                  }}>
-                    {/* Avatar */}
-                    {googleAvatar
-                      ? <img src={googleAvatar} referrerPolicy="no-referrer" style={{ width: 30, height: 30, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.5)", flexShrink: 0 }} />
-                      : <div style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
-                          {(displayName?.[0] || "?").toUpperCase()}
-                        </div>
-                    }
-                    <span style={{ fontSize: 12, fontWeight: 600, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {displayName}
-                    </span>
-                    <span style={{ fontSize: 9, opacity: 0.7 }}>{showProfileMenu ? "▴" : "▾"}</span>
-                  </button>
+            <div>
+              <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 17, fontWeight: 700, lineHeight: 1.2, letterSpacing: "-0.2px" }}>Equivalencias UCALP</div>
+              <div style={{ fontSize: 9, opacity: 0.75, letterSpacing: "0.4px", textTransform: "uppercase", marginTop: 1 }}>Lic. en Gobernanza de Datos · Fac. Cs. Exactas e Ingeniería</div>
+            </div>
+          </div>
 
-                  {/* Dropdown */}
-                  {showProfileMenu && (
-                    <div onClick={() => setShowProfileMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 999 }}>
-                      <div onClick={e => e.stopPropagation()} style={{
-                        position: "absolute", top: "calc(100% + 10px)", right: 0,
-                        background: "#fff", borderRadius: 14, boxShadow: "0 10px 40px rgba(0,0,0,0.18)",
-                        border: "1px solid #E8E8E8", minWidth: 240, overflow: "hidden", zIndex: 1000
-                      }}>
-                        {/* Header con foto grande */}
-                        <div style={{ padding: "18px 18px 14px", borderBottom: "1px solid #F0F0F0", display: "flex", alignItems: "center", gap: 12 }}>
-                          {googleAvatar
-                            ? <img src={googleAvatar} referrerPolicy="no-referrer" style={{ width: 44, height: 44, borderRadius: "50%", border: "2px solid #E8E8E8", flexShrink: 0 }} />
-                            : <div style={{ width: 44, height: 44, borderRadius: "50%", background: C.redSoft, border: `2px solid ${C.redBorder}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: C.red, flexShrink: 0 }}>
-                                {(displayName?.[0] || "?").toUpperCase()}
-                              </div>
-                          }
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: "#212121", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {authProfile.nombre} {authProfile.apellido}
-                            </div>
-                            <div style={{ fontSize: 11, color: "#9E9E9E", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {authProfile.email}
-                            </div>
-                            <span style={{ display: "inline-block", marginTop: 5, fontSize: 10, padding: "2px 8px", borderRadius: 4, background: ROL_LABELS[rol]?.bg, color: ROL_LABELS[rol]?.color, fontWeight: 700 }}>
-                              {ROL_LABELS[rol]?.label || rol}
-                            </span>
-                          </div>
-                        </div>
+          {/* Perfil */}
+          {authSession && authProfile && (() => {
+            const googleAvatar = authSession.user?.user_metadata?.avatar_url || authSession.user?.user_metadata?.picture || authProfile.avatar_url;
+            const displayName = authProfile.nombre || authSession.user?.user_metadata?.full_name?.split(" ")[0] || authProfile.email?.split("@")[0];
+            return (
+              <div style={{ position: "relative" }}>
+                <button onClick={() => setShowProfileMenu(m => !m)} style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "4px 12px 4px 4px",
+                  borderRadius: 24, border: "1.5px solid rgba(255,255,255,0.3)",
+                  background: showProfileMenu ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.12)",
+                  cursor: "pointer", color: "#fff", transition: "background 0.15s"
+                }}>
+                  {googleAvatar
+                    ? <img src={googleAvatar} referrerPolicy="no-referrer" style={{ width: 30, height: 30, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.5)", flexShrink: 0 }} />
+                    : <div style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+                        {(displayName?.[0] || "?").toUpperCase()}
+                      </div>
+                  }
+                  <span style={{ fontSize: 13, fontWeight: 600, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</span>
+                  <span style={{ fontSize: 9, opacity: 0.7 }}>{showProfileMenu ? "▴" : "▾"}</span>
+                </button>
 
-                        {/* Opciones */}
-                        <div style={{ padding: "6px 0" }}>
-                          <button onClick={() => { setTab("settings"); setShowProfileMenu(false); }} style={{
-                            width: "100%", padding: "11px 18px", textAlign: "left", border: "none",
-                            background: "none", cursor: "pointer", fontSize: 13, color: "#424242",
-                            display: "flex", alignItems: "center", gap: 12
-                          }} onMouseEnter={e => e.currentTarget.style.background="#F5F5F5"} onMouseLeave={e => e.currentTarget.style.background="none"}>
-                            ⚙️ <span>Configuración</span>
-                          </button>
-                          {isDirector && (
-                            <button onClick={() => { setTab("settings"); setShowProfileMenu(false); }} style={{
-                              width: "100%", padding: "11px 18px", textAlign: "left", border: "none",
-                              background: "none", cursor: "pointer", fontSize: 13, color: "#424242",
-                              display: "flex", alignItems: "center", gap: 12
-                            }} onMouseEnter={e => e.currentTarget.style.background="#F5F5F5"} onMouseLeave={e => e.currentTarget.style.background="none"}>
-                              👥 <span>Gestión de usuarios</span>
-                            </button>
-                          )}
-                          <div style={{ height: 1, background: "#F5F5F5", margin: "4px 8px" }} />
-                          <button onClick={() => { handleLogout(); setShowProfileMenu(false); }} style={{
-                            width: "100%", padding: "11px 18px", textAlign: "left", border: "none",
-                            background: "none", cursor: "pointer", fontSize: 13, color: "#C62828",
-                            display: "flex", alignItems: "center", gap: 12, fontWeight: 600
-                          }} onMouseEnter={e => e.currentTarget.style.background="#FFEBEE"} onMouseLeave={e => e.currentTarget.style.background="none"}>
-                            ↩ <span>Cerrar sesión</span>
-                          </button>
+                {showProfileMenu && (
+                  <div onClick={() => setShowProfileMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 999 }}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                      position: "absolute", top: "calc(100% + 10px)", right: 0,
+                      background: "#fff", borderRadius: 14, boxShadow: "0 10px 40px rgba(0,0,0,0.18)",
+                      border: "1px solid #E8E8E8", minWidth: 240, overflow: "hidden", zIndex: 1000
+                    }}>
+                      <div style={{ padding: "18px 18px 14px", borderBottom: "1px solid #F0F0F0", display: "flex", alignItems: "center", gap: 12 }}>
+                        {googleAvatar
+                          ? <img src={googleAvatar} referrerPolicy="no-referrer" style={{ width: 44, height: 44, borderRadius: "50%", border: "2px solid #E8E8E8", flexShrink: 0 }} />
+                          : <div style={{ width: 44, height: 44, borderRadius: "50%", background: C.redSoft, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: C.red, flexShrink: 0 }}>
+                              {(displayName?.[0] || "?").toUpperCase()}
+                            </div>
+                        }
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#212121", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{authProfile.nombre} {authProfile.apellido}</div>
+                          <div style={{ fontSize: 11, color: "#9E9E9E", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{authProfile.email}</div>
+                          <span style={{ display: "inline-block", marginTop: 5, fontSize: 10, padding: "2px 8px", borderRadius: 4, background: ROL_LABELS[rol]?.bg, color: ROL_LABELS[rol]?.color, fontWeight: 700 }}>
+                            {ROL_LABELS[rol]?.label || rol}
+                          </span>
                         </div>
                       </div>
+                      <div style={{ padding: "6px 0" }}>
+                        <button onClick={() => { setTab("settings"); setShowProfileMenu(false); }} style={{ width: "100%", padding: "11px 18px", textAlign: "left", border: "none", background: "none", cursor: "pointer", fontSize: 13, color: "#424242", display: "flex", alignItems: "center", gap: 12 }}
+                          onMouseEnter={e => e.currentTarget.style.background="#F5F5F5"} onMouseLeave={e => e.currentTarget.style.background="none"}>
+                          ⚙️ <span>Configuración</span>
+                        </button>
+                        <div style={{ height: 1, background: "#F5F5F5", margin: "4px 8px" }} />
+                        <button onClick={() => { handleLogout(); setShowProfileMenu(false); }} style={{ width: "100%", padding: "11px 18px", textAlign: "left", border: "none", background: "none", cursor: "pointer", fontSize: 13, color: "#C62828", display: "flex", alignItems: "center", gap: 12, fontWeight: 600 }}
+                          onMouseEnter={e => e.currentTarget.style.background="#FFEBEE"} onMouseLeave={e => e.currentTarget.style.background="none"}>
+                          ↩ <span>Cerrar sesión</span>
+                        </button>
+                      </div>
                     </div>
-                  )}
-                </div>
-                );
-              })()}
-            </nav>
-          </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </header>
 
-      {/* Accent line */}
-      <div style={{ height: 3, background: `linear-gradient(90deg, ${C.red}, ${C.redLight}, ${C.redMuted}, ${C.redLight}, ${C.red})` }} />
+      {/* ─── BODY: sidebar + contenido ─── */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
 
-      <main style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 20px 80px" }}>
+        {/* ── SIDEBAR ── */}
+        <aside style={{
+          width: 200, flexShrink: 0, background: C.surface,
+          borderRight: `1px solid ${C.borderLight}`,
+          display: "flex", flexDirection: "column",
+          position: "sticky", top: 58, height: "calc(100vh - 58px)",
+          overflowY: "auto"
+        }}>
+          <nav style={{ padding: "16px 10px", display: "flex", flexDirection: "column", gap: 3 }}>
+            {tabData.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", textAlign: "left",
+                background: tab === t.id ? C.redSoft : "transparent",
+                color: tab === t.id ? C.redAccent : C.textSecondary,
+                fontWeight: tab === t.id ? 700 : 400,
+                fontSize: 13, fontFamily: "'DM Sans', sans-serif",
+                transition: "all 0.12s",
+                borderLeft: tab === t.id ? `3px solid ${C.red}` : "3px solid transparent"
+              }}
+              onMouseEnter={e => { if (tab !== t.id) e.currentTarget.style.background = C.bg; }}
+              onMouseLeave={e => { if (tab !== t.id) e.currentTarget.style.background = "transparent"; }}
+              >
+                <span style={{ fontSize: 16, width: 20, textAlign: "center", flexShrink: 0 }}>{t.icon}</span>
+                <span>{t.label}</span>
+              </button>
+            ))}
+          </nav>
+
+          {/* Rol badge al fondo del sidebar */}
+          {authProfile && (
+            <div style={{ marginTop: "auto", padding: "14px 14px 20px", borderTop: `1px solid ${C.borderLight}` }}>
+              <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 4 }}>Sesión activa</div>
+              <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 5, background: ROL_LABELS[rol]?.bg, color: ROL_LABELS[rol]?.color, fontWeight: 700 }}>
+                {ROL_LABELS[rol]?.label || rol}
+              </span>
+            </div>
+          )}
+        </aside>
+
+        {/* ── CONTENIDO PRINCIPAL ── */}
+        <main style={{ flex: 1, minWidth: 0, padding: "28px 28px 80px", overflowY: "auto" }}>
 
         {/* ═══════ DASHBOARD ═══════ */}
         {tab === "dashboard" && (
@@ -3283,6 +3287,7 @@ export default function EquivalenciasApp() {
           </div>
         )}
       </main>
+      </div> {/* end flex body */}
 
       {/* API Key Modal */}
       {showApiKeyModal && (
@@ -3300,7 +3305,7 @@ export default function EquivalenciasApp() {
       )}
 
       {/* Footer */}
-      <footer style={{ position: "fixed", bottom: 0, left: 0, right: 0, height: 36, background: C.surface, borderTop: `1px solid ${C.borderLight}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: C.textMuted }}>
+      <footer style={{ position: "fixed", bottom: 0, left: 200, right: 0, height: 32, background: C.surface, borderTop: `1px solid ${C.borderLight}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: C.textMuted, zIndex: 50 }}>
         Universidad Católica de La Plata · Fac. de Ciencias Exactas e Ingeniería · Lic. en Gobernanza de Datos · Dir. Francisco Fernández Ruiz
       </footer>
     </div>
