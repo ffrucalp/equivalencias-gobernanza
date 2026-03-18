@@ -2109,6 +2109,22 @@ export default function EquivalenciasApp() {
                     )}
                   </div>
 
+                  {selectedPlan && (selectedPlan.subjects?.length > 0) && (
+                    <div style={{ ...cardStyle, padding: "12px", maxHeight: 260, display: "flex", flexDirection: "column" }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.textSecondary, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.4px", flexShrink: 0 }}>
+                        Materias del plan <span style={{ color: C.textMuted, fontWeight: 400 }}>({selectedPlan.subjects.length})</span>
+                      </div>
+                      <div style={{ overflowY: "auto", flex: 1 }}>
+                        {selectedPlan.subjects.map((s, i) => (
+                          <div key={i} style={{ fontSize: 11, padding: "4px 7px", borderRadius: 4, marginBottom: 2, background: C.bg, border: `1px solid ${C.borderLight}`, color: C.text, lineHeight: 1.3 }}>
+                            <span style={{ color: C.textMuted, marginRight: 5, fontSize: 9 }}>{i + 1}.</span>
+                            {s.name || s}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {selectedPlan && (
                     <div style={{ ...cardStyle, padding: "14px" }}>
                       {!apiKey && <div style={{ fontSize: 12, color: C.amber, marginBottom: 8 }}>⚠ Configurá API Key en Config.</div>}
