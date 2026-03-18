@@ -1356,6 +1356,11 @@ export default function EquivalenciasApp() {
     if (sbUrl) setSupabaseUrl(sbUrl);
     if (sbKey) setSupabaseKey(sbKey);
     if (cache) setTablaCache(cache);
+    // Restore last tabla state
+    const lastPlanId = loadData("eq-tabla-last-plan", null);
+    const lastEdits  = loadData("eq-tabla-last-edits", {});
+    if (lastPlanId) setTablaSelectedPlanId(lastPlanId);
+    if (lastEdits && Object.keys(lastEdits).length > 0) setTablaEditColors(lastEdits);
 
     // ── Auth init ──
     const initAuth = async () => {
@@ -1376,6 +1381,9 @@ export default function EquivalenciasApp() {
           const { data: profile } = await sb.from("profiles").select("*").eq("id", session.user.id).single();
           setAuthProfile(profile);
           if (profile?.openrouter_key) { setApiKey(profile.openrouter_key); saveData("eq-apikey-v2", profile.openrouter_key); }
+          // Load saved tablas
+          const { data: tablas } = await sb.from("equivalencias_tablas").select("*").order("updated_at", { ascending: false });
+          if (tablas) setSavedTablas(tablas.map(r => ({ ...r, colors: typeof r.colors === "string" ? JSON.parse(r.colors) : r.colors })));
         } else {
           setAuthProfile(null);
         }
@@ -1392,8 +1400,10 @@ export default function EquivalenciasApp() {
     link2.href = "https://www.ucalp.edu.ar/wp-content/uploads/2016/08/apple-touch-icon.png";
   }, []);
 
-  const saveApiKey = (k) => {
-    setApiKey(k);
+  // Persist tabla edit state on change
+  useEffect(() => { saveData("eq-tabla-last-edits", tablaEditColors); }, [tablaEditColors]);
+
+  const saveApiKey = (k) => {    setApiKey(k);
     saveData("eq-apikey-v2", k);
     // Also persist to Supabase profile so it syncs across devices
     const sb = getSupabaseClient();
@@ -1530,9 +1540,12 @@ export default function EquivalenciasApp() {
     const plan = { id: Date.now().toString(), date: new Date().toISOString(), university, career, url, subjects };
     const updated = [plan, ...savedPlans];
     setSavedPlans(updated); saveData("eq-plans-v2", updated);
-    // Also persist to Supabase if configured
-    if (supabaseUrl && supabaseKey) {
-      supabaseSavePlan(supabaseUrl, supabaseKey, plan).catch(() => {});
+    const sb = getSupabaseClient();
+    if (sb) {
+      sb.from("saved_plans").insert({
+        id: plan.id, university, career, plan_url: url || "",
+        subjects: subjects, created_at: plan.date
+      }).then(() => {});
     }
     return plan;
   };
@@ -1711,87 +1724,92 @@ export default function EquivalenciasApp() {
                 }}>{t.icon} {t.label}</button>
               ))}
               {/* Profile dropdown */}
-              {authSession && authProfile && (
+              {authSession && authProfile && (() => {
+                const googleAvatar = authSession.user?.user_metadata?.avatar_url || authSession.user?.user_metadata?.picture || authProfile.avatar_url;
+                const displayName = authProfile.nombre || authSession.user?.user_metadata?.full_name?.split(" ")[0] || authProfile.email?.split("@")[0];
+                return (
                 <div style={{ position: "relative", marginLeft: 8 }}>
                   <button onClick={() => setShowProfileMenu(m => !m)} style={{
-                    display: "flex", alignItems: "center", gap: 8, padding: "5px 10px 5px 6px",
-                    borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)",
-                    background: showProfileMenu ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.1)",
+                    display: "flex", alignItems: "center", gap: 8, padding: "4px 10px 4px 4px",
+                    borderRadius: 24, border: "1.5px solid rgba(255,255,255,0.3)",
+                    background: showProfileMenu ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.12)",
                     cursor: "pointer", color: "#fff", transition: "background 0.15s"
                   }}>
                     {/* Avatar */}
-                    {authProfile.avatar_url
-                      ? <img src={authProfile.avatar_url} style={{ width: 28, height: 28, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.4)" }} />
-                      : <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>
-                          {(authProfile.nombre?.[0] || authProfile.email?.[0] || "?").toUpperCase()}
+                    {googleAvatar
+                      ? <img src={googleAvatar} referrerPolicy="no-referrer" style={{ width: 30, height: 30, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.5)", flexShrink: 0 }} />
+                      : <div style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+                          {(displayName?.[0] || "?").toUpperCase()}
                         </div>
                     }
-                    <div style={{ textAlign: "left" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.2 }}>
-                        {authProfile.nombre || authProfile.email?.split("@")[0]}
-                      </div>
-                      <div style={{ fontSize: 9, opacity: 0.75, background: "rgba(255,255,255,0.15)", padding: "1px 5px", borderRadius: 3, marginTop: 1 }}>
-                        {ROL_LABELS[rol]?.label || rol}
-                      </div>
-                    </div>
-                    <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 2 }}>{showProfileMenu ? "▴" : "▾"}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {displayName}
+                    </span>
+                    <span style={{ fontSize: 9, opacity: 0.7 }}>{showProfileMenu ? "▴" : "▾"}</span>
                   </button>
 
-                  {/* Dropdown menu */}
+                  {/* Dropdown */}
                   {showProfileMenu && (
-                    <div onClick={() => setShowProfileMenu(false)} style={{
-                      position: "fixed", inset: 0, zIndex: 999
-                    }}>
+                    <div onClick={() => setShowProfileMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 999 }}>
                       <div onClick={e => e.stopPropagation()} style={{
-                        position: "absolute", top: "calc(100% + 8px)", right: 0,
-                        background: "#fff", borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
-                        border: "1px solid #E0E0E0", minWidth: 220, overflow: "hidden", zIndex: 1000
+                        position: "absolute", top: "calc(100% + 10px)", right: 0,
+                        background: "#fff", borderRadius: 14, boxShadow: "0 10px 40px rgba(0,0,0,0.18)",
+                        border: "1px solid #E8E8E8", minWidth: 240, overflow: "hidden", zIndex: 1000
                       }}>
-                        {/* Profile info */}
-                        <div style={{ padding: "14px 16px", borderBottom: "1px solid #F0F0F0", background: "#FAFAFA" }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: "#212121" }}>
-                            {authProfile.nombre} {authProfile.apellido}
-                          </div>
-                          <div style={{ fontSize: 11, color: "#757575", marginTop: 2 }}>{authProfile.email}</div>
-                          <div style={{ marginTop: 6 }}>
-                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: ROL_LABELS[rol]?.bg, color: ROL_LABELS[rol]?.color, fontWeight: 700 }}>
+                        {/* Header con foto grande */}
+                        <div style={{ padding: "18px 18px 14px", borderBottom: "1px solid #F0F0F0", display: "flex", alignItems: "center", gap: 12 }}>
+                          {googleAvatar
+                            ? <img src={googleAvatar} referrerPolicy="no-referrer" style={{ width: 44, height: 44, borderRadius: "50%", border: "2px solid #E8E8E8", flexShrink: 0 }} />
+                            : <div style={{ width: 44, height: 44, borderRadius: "50%", background: C.redSoft, border: `2px solid ${C.redBorder}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: C.red, flexShrink: 0 }}>
+                                {(displayName?.[0] || "?").toUpperCase()}
+                              </div>
+                          }
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: "#212121", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {authProfile.nombre} {authProfile.apellido}
+                            </div>
+                            <div style={{ fontSize: 11, color: "#9E9E9E", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {authProfile.email}
+                            </div>
+                            <span style={{ display: "inline-block", marginTop: 5, fontSize: 10, padding: "2px 8px", borderRadius: 4, background: ROL_LABELS[rol]?.bg, color: ROL_LABELS[rol]?.color, fontWeight: 700 }}>
                               {ROL_LABELS[rol]?.label || rol}
                             </span>
                           </div>
                         </div>
 
-                        {/* Menu items */}
+                        {/* Opciones */}
                         <div style={{ padding: "6px 0" }}>
                           <button onClick={() => { setTab("settings"); setShowProfileMenu(false); }} style={{
-                            width: "100%", padding: "10px 16px", textAlign: "left", border: "none",
+                            width: "100%", padding: "11px 18px", textAlign: "left", border: "none",
                             background: "none", cursor: "pointer", fontSize: 13, color: "#424242",
-                            display: "flex", alignItems: "center", gap: 10
-                          }}>
-                            <span>⚙️</span> Configuración
+                            display: "flex", alignItems: "center", gap: 12
+                          }} onMouseEnter={e => e.currentTarget.style.background="#F5F5F5"} onMouseLeave={e => e.currentTarget.style.background="none"}>
+                            ⚙️ <span>Configuración</span>
                           </button>
                           {isDirector && (
                             <button onClick={() => { setTab("settings"); setShowProfileMenu(false); }} style={{
-                              width: "100%", padding: "10px 16px", textAlign: "left", border: "none",
+                              width: "100%", padding: "11px 18px", textAlign: "left", border: "none",
                               background: "none", cursor: "pointer", fontSize: 13, color: "#424242",
-                              display: "flex", alignItems: "center", gap: 10
-                            }}>
-                              <span>👥</span> Gestión de usuarios
+                              display: "flex", alignItems: "center", gap: 12
+                            }} onMouseEnter={e => e.currentTarget.style.background="#F5F5F5"} onMouseLeave={e => e.currentTarget.style.background="none"}>
+                              👥 <span>Gestión de usuarios</span>
                             </button>
                           )}
-                          <div style={{ height: 1, background: "#F0F0F0", margin: "4px 0" }} />
+                          <div style={{ height: 1, background: "#F5F5F5", margin: "4px 8px" }} />
                           <button onClick={() => { handleLogout(); setShowProfileMenu(false); }} style={{
-                            width: "100%", padding: "10px 16px", textAlign: "left", border: "none",
-                            background: "none", cursor: "pointer", fontSize: 13, color: "#B71C1C",
-                            display: "flex", alignItems: "center", gap: 10, fontWeight: 600
-                          }}>
-                            <span>↩</span> Cerrar sesión
+                            width: "100%", padding: "11px 18px", textAlign: "left", border: "none",
+                            background: "none", cursor: "pointer", fontSize: 13, color: "#C62828",
+                            display: "flex", alignItems: "center", gap: 12, fontWeight: 600
+                          }} onMouseEnter={e => e.currentTarget.style.background="#FFEBEE"} onMouseLeave={e => e.currentTarget.style.background="none"}>
+                            ↩ <span>Cerrar sesión</span>
                           </button>
                         </div>
                       </div>
                     </div>
                   )}
                 </div>
-              )}
+                );
+              })()}
             </nav>
           </div>
         </div>
@@ -1910,6 +1928,7 @@ export default function EquivalenciasApp() {
             if (!apiKey) { setShowApiKeyModal(true); return; }
             if (!selectedPlan) return;
             setTablaBatchLoading(true); setTablaBatchError(null); setTablaEditColors({});
+            saveData("eq-tabla-last-edits", {});
             try {
               const result = await runBatchQuickAnalysis(selectedPlan, apiKey, selectedModel);
               const entry = { planId: selectedPlan.id, colors: result };
@@ -1925,30 +1944,38 @@ export default function EquivalenciasApp() {
           };
 
           const saveToSupabase = async () => {
-            if (!supabaseUrl || !supabaseKey) { alert("Configurá Supabase en Config. primero."); return; }
             if (!effectiveColors || !selectedPlan) return;
+            const sb = getSupabaseClient();
+            if (!sb) { alert("Supabase no configurado."); return; }
             setTablaSaving(true);
             try {
-              // Check if exists already
               const existing = savedTablas.find(t => t.plan_id === selectedPlan.id);
               if (existing) {
-                await supabaseUpdateTabla(supabaseUrl, supabaseKey, existing.id, effectiveColors, "");
+                const { error } = await sb.from("equivalencias_tablas").update({
+                  colors: effectiveColors,
+                  notes: "",
+                  updated_at: new Date().toISOString()
+                }).eq("id", existing.id);
+                if (error) throw new Error(error.message);
               } else {
-                await supabaseSaveTabla(supabaseUrl, supabaseKey, {
-                  originUniversity: selectedPlan.university,
-                  originCareer: selectedPlan.career,
-                  planId: selectedPlan.id,
-                  colors: effectiveColors
+                const { error } = await sb.from("equivalencias_tablas").insert({
+                  origin_university: selectedPlan.university,
+                  origin_career:     selectedPlan.career,
+                  plan_id:           selectedPlan.id,
+                  colors:            effectiveColors,
+                  created_at:        new Date().toISOString(),
+                  updated_at:        new Date().toISOString()
                 });
+                if (error) throw new Error(error.message);
               }
-              // Reload
-              const tablas = await supabaseLoadTablas(supabaseUrl, supabaseKey);
-              setSavedTablas(tablas);
-              // Also update local cache
+              // Reload from Supabase
+              const { data: tablas } = await sb.from("equivalencias_tablas").select("*").order("updated_at", { ascending: false });
+              if (tablas) setSavedTablas(tablas.map(r => ({ ...r, colors: typeof r.colors === "string" ? JSON.parse(r.colors) : r.colors })));
+              // Update local cache
               const newCache = { ...tablaCache, [selectedPlan.id]: effectiveColors };
               setTablaCache(newCache);
               saveData("eq-tabla-cache", newCache);
-              alert(`✅ Tabla guardada en Supabase para: ${selectedPlan.career}`);
+              alert(`✅ Tabla guardada para: ${selectedPlan.career}`);
             } catch(e) {
               alert("⚠ Error guardando: " + e.message);
             } finally {
@@ -2058,7 +2085,7 @@ export default function EquivalenciasApp() {
                           const cTotal = cached ? Object.values(cached).filter(v => v === "TOTAL").length : 0;
                           const cParcial = cached ? Object.values(cached).filter(v => v === "PARCIAL").length : 0;
                           return (
-                            <button key={plan.id} onClick={() => { setTablaSelectedPlanId(plan.id); setTablaBatchError(null); setTablaEditColors({}); setTablaEditMode(false); }} style={{
+                            <button key={plan.id} onClick={() => { setTablaSelectedPlanId(plan.id); setTablaBatchError(null); setTablaEditColors({}); setTablaEditMode(false); saveData('eq-tabla-last-plan', plan.id); saveData('eq-tabla-last-edits', {}); }} style={{
                               padding: "9px 12px", borderRadius: 7, cursor: "pointer", textAlign: "left",
                               border: `1.5px solid ${isSelected ? C.red : C.border}`,
                               background: isSelected ? C.redSoft : C.surface, transition: "all 0.12s"
