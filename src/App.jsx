@@ -192,8 +192,12 @@ export default function EquivalenciasApp() {
 
   const handleLogout = async () => {
     const sb = getSupabaseClient();
-    if (sb) await sb.auth.signOut();
+    if (sb) {
+      try { await sb.auth.signOut({ scope: "global" }); } catch (e) { console.error("Logout error:", e); }
+    }
     setAuthSession(null); setAuthProfile(null);
+    // Force page reload to clear all state
+    window.location.reload();
   };
 
   const handleResetPassword = async () => {
@@ -402,18 +406,17 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
   };
 
   const savePlan = async (university, career, subjects, url) => {
-    const plan = { id: Date.now().toString(), date: new Date().toISOString(), university, career, url, subjects };
+    const planId = Date.now().toString();
+    const plan = { id: planId, date: new Date().toISOString(), university, career, url, subjects };
     const sb = getSupabaseClient();
     if (sb) {
       try {
-        const { data } = await sb.from("saved_plans").insert({
-          id: plan.id, university, career, plan_url: url || "",
-          subjects: subjects, created_at: plan.date
-        }).select().single();
-        if (data) {
-          plan.id = data.id;
-        }
-      } catch (e) { console.error("Error saving plan to Supabase:", e); }
+        const { error } = await sb.from("saved_plans").insert({
+          id: planId, university, career, plan_url: url || "",
+          subjects: JSON.stringify(subjects), created_at: plan.date
+        });
+        if (error) console.error("Supabase save error:", error.message);
+      } catch (e) { console.error("Error saving plan:", e); }
     }
     setSavedPlans(prev => [plan, ...prev]);
     return plan;
@@ -914,7 +917,7 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
                           ⚙️ <span>Configuración</span>
                         </button>
                         <div style={{ height: 1, background: "#F5F5F5", margin: "4px 8px" }} />
-                        <button onClick={() => { handleLogout(); setShowProfileMenu(false); }} style={{ width: "100%", padding: "11px 18px", textAlign: "left", border: "none", background: "none", cursor: "pointer", fontSize: 13, color: "#C62828", display: "flex", alignItems: "center", gap: 12, fontWeight: 600 }}
+                        <button onClick={async () => { setShowProfileMenu(false); await handleLogout(); }} style={{ width: "100%", padding: "11px 18px", textAlign: "left", border: "none", background: "none", cursor: "pointer", fontSize: 13, color: "#C62828", display: "flex", alignItems: "center", gap: 12, fontWeight: 600 }}
                           onMouseEnter={e => e.currentTarget.style.background="#FFEBEE"} onMouseLeave={e => e.currentTarget.style.background="none"}>
                           ↩ <span>Cerrar sesión</span>
                         </button>
@@ -1994,11 +1997,11 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
                 {sheetsData && (
                   <div style={{ marginTop: 10 }}>
                     <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 6 }}>{sheetsData.length} filas importadas</div>
-                    <button onClick={() => {
+                    <button onClick={async () => {
                       const subjects = sheetsData.slice(1).map(r => r[0]).filter(s => s && s.length > 2);
                       const uni = originUniversity.includes("Otra") ? customUniversity : originUniversity;
                       const car = originCareer.includes("Otra") ? customCareer : originCareer;
-                      savePlan(uni, car, subjects.map(s => ({ name: s, details: "" })), sheetsUrl);
+                      await savePlan(uni, car, subjects.map(s => ({ name: s, details: "" })), sheetsUrl);
                       setSheetsData(null); setSheetsUrl("");
                     }} style={{ ...btnPrimary, padding: "8px 16px", fontSize: 12, background: C.green }}>
                       💾 Guardar materias (1era columna)
@@ -2087,10 +2090,10 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
                         ))}
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <button onClick={() => {
+                        <button onClick={async () => {
                           const uni = originUniversity.includes("Otra") ? customUniversity : originUniversity;
                           const car = originCareer.includes("Otra") ? customCareer : originCareer;
-                          savePlan(uni, car, scrapedPlan.subjects, scrapeUrl || "");
+                          await savePlan(uni, car, scrapedPlan.subjects, scrapeUrl || "");
                           setScrapedPlan(null); setScrapeUrl("");
                         }} style={{ ...btnPrimary, padding: "10px 20px", fontSize: 13 }}>
                           💾 Guardar este plan ({scrapedPlan.subjects.length} materias)
