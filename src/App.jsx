@@ -405,28 +405,32 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
     } catch (err) { setError("Error scrapeando: " + err.message); } finally { setScraping(false); }
   };
 
-  const savePlan = async (university, career, subjects, url) => {
+  const savePlan = (university, career, subjects, url) => {
     const planId = Date.now().toString();
     const plan = { id: planId, date: new Date().toISOString(), university, career, url, subjects };
+    // Update UI immediately
+    setSavedPlans(prev => [plan, ...prev]);
+    // Save to Supabase in background (fire and forget)
     const sb = getSupabaseClient();
     if (sb) {
-      try {
-        const { error } = await sb.from("saved_plans").insert({
-          id: planId, university, career, plan_url: url || "",
-          subjects: JSON.stringify(subjects), created_at: plan.date
-        });
+      sb.from("saved_plans").insert({
+        id: planId, university, career, plan_url: url || "",
+        subjects: JSON.stringify(subjects), created_at: plan.date
+      }).then(({ error }) => {
         if (error) console.error("Supabase save error:", error.message);
-      } catch (e) { console.error("Error saving plan:", e); }
+        else console.log("✓ Plan guardado en Supabase:", planId);
+      }).catch(e => console.error("Error saving plan:", e));
     }
-    setSavedPlans(prev => [plan, ...prev]);
     return plan;
   };
 
-  const deletePlan = async (id) => {
+  const deletePlan = (id) => {
     setSavedPlans(prev => prev.filter(p => p.id !== id));
     const sb = getSupabaseClient();
     if (sb) {
-      try { await sb.from("saved_plans").delete().eq("id", id); } catch (e) { console.error("Error deleting plan:", e); }
+      sb.from("saved_plans").delete().eq("id", id)
+        .then(({ error }) => { if (error) console.error("Delete error:", error.message); })
+        .catch(e => console.error("Error deleting plan:", e));
     }
   };
 
@@ -1997,11 +2001,11 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
                 {sheetsData && (
                   <div style={{ marginTop: 10 }}>
                     <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 6 }}>{sheetsData.length} filas importadas</div>
-                    <button onClick={async () => {
+                    <button onClick={() => {
                       const subjects = sheetsData.slice(1).map(r => r[0]).filter(s => s && s.length > 2);
                       const uni = originUniversity.includes("Otra") ? customUniversity : originUniversity;
                       const car = originCareer.includes("Otra") ? customCareer : originCareer;
-                      await savePlan(uni, car, subjects.map(s => ({ name: s, details: "" })), sheetsUrl);
+                      savePlan(uni, car, subjects.map(s => ({ name: s, details: "" })), sheetsUrl);
                       setSheetsData(null); setSheetsUrl("");
                     }} style={{ ...btnPrimary, padding: "8px 16px", fontSize: 12, background: C.green }}>
                       💾 Guardar materias (1era columna)
@@ -2090,10 +2094,10 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
                         ))}
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <button onClick={async () => {
+                        <button onClick={() => {
                           const uni = originUniversity.includes("Otra") ? customUniversity : originUniversity;
                           const car = originCareer.includes("Otra") ? customCareer : originCareer;
-                          await savePlan(uni, car, scrapedPlan.subjects, scrapeUrl || "");
+                          savePlan(uni, car, scrapedPlan.subjects, scrapeUrl || "");
                           setScrapedPlan(null); setScrapeUrl("");
                         }} style={{ ...btnPrimary, padding: "10px 20px", fontSize: 13 }}>
                           💾 Guardar este plan ({scrapedPlan.subjects.length} materias)
