@@ -9,7 +9,7 @@ import { searchGmailAttachments, downloadGmailAttachment } from "./lib/gmail";
 
 export default function EquivalenciasApp() {
   const [tab, setTab] = useState("dashboard");
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKey] = useState(import.meta.env.VITE_OPENROUTER_KEY || "");
   const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -84,7 +84,7 @@ export default function EquivalenciasApp() {
 
   useEffect(() => {
     const saved = loadData("eq-analyses-v2", []);
-    const key = loadData("eq-apikey-v2", "");
+    const key = import.meta.env.VITE_OPENROUTER_KEY || loadData("eq-apikey-v2", "");
     const model = loadData("eq-model-v2", MODELS[0].id);
     setAnalyses(saved); setApiKey(key); setSelectedModel(model); setLoading(false);
     const sbUrl = import.meta.env.VITE_SUPABASE_URL || loadData("eq-supabase-url", "");
@@ -130,7 +130,7 @@ export default function EquivalenciasApp() {
       if (session?.user) {
         const { data: profile } = await sb.from("profiles").select("*").eq("id", session.user.id).single();
         setAuthProfile(profile);
-        if (profile?.openrouter_key) { setApiKey(profile.openrouter_key); saveData("eq-apikey-v2", profile.openrouter_key); }
+        if (profile?.openrouter_key && !import.meta.env.VITE_OPENROUTER_KEY) { setApiKey(profile.openrouter_key); saveData("eq-apikey-v2", profile.openrouter_key); }
         await loadPlansFromSupabase(sb);
         await loadProgramAttachments(sb);
       }
@@ -140,7 +140,7 @@ export default function EquivalenciasApp() {
         if (session?.user) {
           const { data: profile } = await sb.from("profiles").select("*").eq("id", session.user.id).single();
           setAuthProfile(profile);
-          if (profile?.openrouter_key) { setApiKey(profile.openrouter_key); saveData("eq-apikey-v2", profile.openrouter_key); }
+          if (profile?.openrouter_key && !import.meta.env.VITE_OPENROUTER_KEY) { setApiKey(profile.openrouter_key); saveData("eq-apikey-v2", profile.openrouter_key); }
           const { data: tablas } = await sb.from("equivalencias_tablas").select("*").order("updated_at", { ascending: false });
           if (tablas) setSavedTablas(tablas.map(r => ({ ...r, colors: typeof r.colors === "string" ? JSON.parse(r.colors) : r.colors })));
           await loadPlansFromSupabase(sb);
