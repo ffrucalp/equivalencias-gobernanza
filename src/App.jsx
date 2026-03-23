@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { getSupabaseClient, resetSupabaseClient } from "./supabaseClient";
-import { UCALP_PLAN, UCALP_PROGRAMS, UCALP_ORDER, MODELS, COMMON_UNIVERSITIES, COMMON_CAREERS } from "./lib/constants";
+import { UCALP_PLAN, UCALP_PROGRAMS, UCALP_ORDER, MODELS } from "./lib/constants";
 import { C, cardStyle, inputStyle, selectStyle, btnPrimary, btnOutline } from "./lib/styles";
-import { Badge, CoverageCircle, UnitDetail, AlertBox, InfoBox, SectionTitle, Label } from "./lib/components";
+import { Badge, CoverageCircle, UnitDetail, AlertBox, InfoBox, SectionTitle, Label, AutocompleteInput } from "./lib/components";
 import { loadData, saveData, parseTextPlan, extractTextFromFile, importFromGoogleSheets, parseHtmlTable, aiExtractSubjects, scrapeStudyPlan, buildPrompt, runBatchQuickAnalysis } from "./lib/utils";
 import { isGoogleDriveConfigured, pickFileFromDrive } from "./lib/googleDrive";
 import { searchGmailAttachments, downloadGmailAttachment } from "./lib/gmail";
 
 export default function EquivalenciasApp() {
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTab] = useState(() => loadData("eq-current-tab", "dashboard"));
   const [apiKey, setApiKey] = useState(import.meta.env.VITE_OPENROUTER_KEY || "");
   const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
   const [analyses, setAnalyses] = useState([]);
@@ -25,9 +25,9 @@ export default function EquivalenciasApp() {
   const [error, setError] = useState(null);
   const [expandedAnalysis, setExpandedAnalysis] = useState(null);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
-  const [originUniversity, setOriginUniversity] = useState(COMMON_UNIVERSITIES[0]);
+  const [originUniversity, setOriginUniversity] = useState("");
   const [customUniversity, setCustomUniversity] = useState("");
-  const [originCareer, setOriginCareer] = useState(COMMON_CAREERS[0]);
+  const [originCareer, setOriginCareer] = useState("");
   const [customCareer, setCustomCareer] = useState("");
   const [scrapeUrl, setScrapeUrl] = useState("");
   const [scraping, setScraping] = useState(false);
@@ -50,11 +50,11 @@ export default function EquivalenciasApp() {
   // Reporte tab state
   const [rStudentName, setRStudentName] = useState("");
   const [rStudentDni, setRStudentDni] = useState("");
-  const [rStudentUni, setRStudentUni] = useState("Universidad Nacional de La Plata (UNLP)");
-  const [rStudentCareer, setRStudentCareer] = useState("Ingeniería en Computación");
+  const [rStudentUni, setRStudentUni] = useState("");
+  const [rStudentCareer, setRStudentCareer] = useState("");
   // Unified Reporte Alumno state
   const [raStep, setRaStep] = useState("datos"); // datos | analisis | reporte
-  const [raOriginSubjects, setRaOriginSubjects] = useState([{ name: "", program: "" }]); // multiple origin subjects
+  const [raOriginSubjects, setRaOriginSubjects] = useState([{ name: "", program: "", hours: "" }]); // multiple origin subjects
   const [raTargetSubjects, setRaTargetSubjects] = useState([]); // array of UCALP subject keys (multi-select)
   const [raStudentAnalyses, setRaStudentAnalyses] = useState([]); // analyses saved for this student session
   const [raAnalyzing, setRaAnalyzing] = useState(false);
@@ -63,6 +63,10 @@ export default function EquivalenciasApp() {
   const [raInputMode, setRaInputMode] = useState("text");
   const [raFileProcessing, setRaFileProcessing] = useState(false);
   const [raFileName, setRaFileName] = useState("");
+  // Saved reports
+  const [savedReports, setSavedReports] = useState([]);
+  const [viewingReport, setViewingReport] = useState(null); // report being viewed
+  const [reportSaving, setReportSaving] = useState(false);
   // Tabla general provisoria state
   const [tablaSelectedPlanId, setTablaSelectedPlanId] = useState(null);
   const [tablaBatchResult, setTablaBatchResult] = useState(null);
@@ -73,6 +77,7 @@ export default function EquivalenciasApp() {
   const [tablaEditColors, setTablaEditColors] = useState({}); // overrides: key -> value
   const [tablaSaving, setTablaSaving] = useState(false);
   const [savedTablas, setSavedTablas] = useState([]);
+  const [tablaSearchQuery, setTablaSearchQuery] = useState("");
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   // Supabase config
   const [supabaseUrl, setSupabaseUrl] = useState("");
@@ -122,6 +127,28 @@ export default function EquivalenciasApp() {
       } catch (e) { console.error("Error loading program attachments:", e); }
     };
 
+    const loadSavedReports = async (sb) => {
+      try {
+        const { data } = await sb.from("reportes_equivalencias").select("*").order("created_at", { ascending: false });
+        if (data) setSavedReports(data.map(r => {
+          const resultados = typeof r.resultados === "string" ? JSON.parse(r.resultados) : (r.resultados || {});
+          return {
+            id: r.id,
+            student_name: r.alumno_nombre,
+            student_dni: r.alumno_dni,
+            origin_university: r.origin_university,
+            origin_career: r.origin_career,
+            analyses: resultados.analyses || [],
+            summary: resultados.summary || {},
+            estado: r.estado,
+            firmado_por: r.firmado_por,
+            notas_director: r.notas_director,
+            created_at: r.created_at,
+          };
+        }));
+      } catch (e) { console.error("Error loading reports:", e); }
+    };
+
     const initAuth = async () => {
       const sb = getSupabaseClient();
       if (!sb) { setAuthLoading(false); return; }
@@ -133,6 +160,7 @@ export default function EquivalenciasApp() {
         if (profile?.openrouter_key && !import.meta.env.VITE_OPENROUTER_KEY) { setApiKey(profile.openrouter_key); saveData("eq-apikey-v2", profile.openrouter_key); }
         await loadPlansFromSupabase(sb);
         await loadProgramAttachments(sb);
+        await loadSavedReports(sb);
       }
       setAuthLoading(false);
       sb.auth.onAuthStateChange(async (event, session) => {
@@ -145,6 +173,7 @@ export default function EquivalenciasApp() {
           if (tablas) setSavedTablas(tablas.map(r => ({ ...r, colors: typeof r.colors === "string" ? JSON.parse(r.colors) : r.colors })));
           await loadPlansFromSupabase(sb);
           await loadProgramAttachments(sb);
+        await loadSavedReports(sb);
         } else {
           setAuthProfile(null);
         }
@@ -160,6 +189,9 @@ export default function EquivalenciasApp() {
     if (!link2) { link2 = document.createElement("link"); link2.rel = "apple-touch-icon"; document.head.appendChild(link2); }
     link2.href = "/favicon-ucalp-180.png";
   }, []);
+
+  // Persist tab selection
+  useEffect(() => { saveData("eq-current-tab", tab); }, [tab]);
 
   // Persist tabla edit state on change
   useEffect(() => { saveData("eq-tabla-last-edits", tablaEditColors); }, [tablaEditColors]);
@@ -231,7 +263,7 @@ export default function EquivalenciasApp() {
   const clearAll = () => { if (confirm("¿Eliminar TODAS las equivalencias guardadas?")) { setAnalyses([]); saveData("eq-analyses-v2", []); } };
 
   // ── Unified Reporte Alumno: multi-subject analysis ──
-  const raAddOriginSubject = () => setRaOriginSubjects(prev => [...prev, { name: "", program: "" }]);
+  const raAddOriginSubject = () => setRaOriginSubjects(prev => [...prev, { name: "", program: "", hours: "" }]);
   const raRemoveOriginSubject = (idx) => setRaOriginSubjects(prev => prev.filter((_, i) => i !== idx));
   const raUpdateOriginSubject = (idx, field, value) => setRaOriginSubjects(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
   const raToggleTarget = (key) => setRaTargetSubjects(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
@@ -242,75 +274,157 @@ export default function EquivalenciasApp() {
     try {
       const text = await extractTextFromFile(file);
       raUpdateOriginSubject(idx, "program", text);
-      setRaInputMode("text");
+      // Auto-fill name from filename if empty
+      const currentName = raOriginSubjects[idx]?.name || "";
+      if (!currentName.trim()) {
+        const nameFromFile = file.name.replace(/\.(pdf|docx?|txt)$/i, "").replace(/[_-]/g, " ").trim();
+        raUpdateOriginSubject(idx, "name", nameFromFile);
+      }
+    } catch (err) { setRaError(err.message); } finally { setRaFileProcessing(false); }
+  };
+
+  const raHandleMultiFileUpload = async (e) => {
+    const files = Array.from(e.target.files); if (!files.length) return;
+    setRaFileProcessing(true); setRaError(null);
+    try {
+      const newSubjects = [];
+      for (const file of files) {
+        const text = await extractTextFromFile(file);
+        const nameFromFile = file.name.replace(/\.(pdf|docx?|txt)$/i, "").replace(/[_-]/g, " ").trim();
+        newSubjects.push({ name: nameFromFile, program: text, hours: "" });
+      }
+      setRaOriginSubjects(prev => {
+        // Replace empty first entry or append
+        const existing = prev.filter(s => s.name.trim() || s.program.trim());
+        return [...existing, ...newSubjects];
+      });
     } catch (err) { setRaError(err.message); } finally { setRaFileProcessing(false); }
   };
 
   const buildMultiPrompt = (originSubjects, targetKeys) => {
     const targets = targetKeys.map(k => UCALP_PROGRAMS[k]).filter(Boolean);
     const origins = originSubjects.filter(s => s.name.trim());
-    const uni = rStudentUni.includes("Otra") ? customUniversity : rStudentUni;
-    const car = rStudentCareer.includes("Otra") ? customCareer : rStudentCareer;
+    const uni = rStudentUni;
+    const car = rStudentCareer;
 
     const originBlock = origins.map((o, i) => `### Materia de origen ${origins.length > 1 ? (i + 1) : ""}
 **Materia:** ${o.name}
+**Carga horaria:** ${o.hours ? o.hours + " horas totales" : "No especificada (PENALIZAR — solicitar al alumno)"}
 **Programa/Contenidos:**
-${o.program}`).join("\n\n");
+${o.program || "(No provisto — limita severamente el análisis)"}`).join("\n\n");
 
     const targetBlock = targets.map(t => {
       const isP = !t.hasProgram;
-      return `### ${t.name} ${isP ? "(PROVISORIO)" : ""}
-**Año/Semestre:** ${t.year} — ${t.semester === "1S" ? "1° Semestre" : t.semester === "2S" ? "2° Semestre" : "Anual"}
-**Créditos:** ${t.credits} | **Carga horaria total:** ${t.totalHours} hs
+      const correlNames = (t.correlatives || []).map(cod => {
+        const found = Object.values(UCALP_PROGRAMS).find(p => p.cod === cod);
+        return found ? `${found.name} (${found.cod})` : `Cod. ${cod}`;
+      });
+      const correlInfo = correlNames.length > 0
+        ? `**Correlativas requeridas:** ${correlNames.join(", ")}\n**Implicancia:** El alumno debe demostrar conocimientos previos equivalentes a estas correlativas para que la equivalencia sea académicamente válida.`
+        : "**Correlativas:** Ninguna (materia sin prerrequisitos)";
+
+      const hoursInfo = `**Carga horaria total:** ${t.totalHours || t.hours || "?"} hs | **Horas semanales:** ${t.weeklyHours || "?"} hs | **Duración:** ${t.semester === "1S" || t.semester === "2S" ? "Semestral" : "Anual"}`;
+
+      return `### ${t.name} ${isP ? "(PROGRAMA PROVISORIO — análisis limitado)" : ""}
+**Código:** ${t.cod} | **Año:** ${t.year} | **Semestre:** ${t.semester === "1S" ? "1° Semestre" : t.semester === "2S" ? "2° Semestre" : "Anual"}
+**Créditos:** ${t.credits} | ${hoursInfo}
+${correlInfo}
 ${isP ? `**Descripción tentativa:** ${t.descripcion || "No disponible"}` :
-`**Unidades:**\n${(t.units || []).map(u => `- Unidad ${u.number}: ${u.title}\n  Contenidos: ${u.topics}`).join("\n")}`}`;
+`**Unidades temáticas:**\n${(t.units || []).map(u => `- Unidad ${u.number}: ${u.title}\n  Contenidos mínimos: ${u.topics}`).join("\n")}`}`;
     }).join("\n\n");
 
-    return `Sos un experto académico en análisis de equivalencias universitarias en Argentina. Tu tarea es comparar rigurosamente ${origins.length > 1 ? "las materias" : "la materia"} de ORIGEN con ${targets.length > 1 ? "cada una de las materias" : "la materia"} DESTINO de la Licenciatura en Gobernanza de Datos (UCALP).
+    // Build hours comparison table
+    const originHoursTable = origins.map(o => `| ${o.name} | ${o.hours ? o.hours + " hs" : "NO ESPECIFICADA"} |`).join("\n");
+    const targetHoursTable = targets.map(t => `| ${t.name} | ${t.totalHours || t.hours || "?"} hs | ${t.credits} cr |`).join("\n");
 
-CONTEXTO IMPORTANTE: ${origins.length > 1
-  ? `El alumno cursó ${origins.length} materias en su carrera de origen que podrían cubrir en conjunto los contenidos de ${targets.length > 1 ? "las materias" : "la materia"} destino. Debés evaluar la cobertura combinada de todas las materias de origen sobre cada materia destino.`
-  : targets.length > 1
-    ? `La materia de origen es una materia que podría cubrir contenidos de ${targets.length} materias destino (por ejemplo, una materia anual que equivale a dos cuatrimestrales). Debés evaluar por separado la cobertura sobre cada materia destino.`
-    : `Comparación directa 1 a 1.`}
+    return `Sos un experto académico en análisis de equivalencias universitarias en Argentina, con amplio conocimiento de la Ley de Educación Superior N° 24.521, normativas CONEAU, y reglamentos internos de equivalencias. Tu análisis debe ser RIGUROSO y CONSERVADOR — una equivalencia mal otorgada perjudica la formación del alumno.
 
-## ${origins.length > 1 ? "MATERIAS" : "MATERIA"} DE ORIGEN
-**Universidad:** ${uni}
-**Carrera:** ${car}
+## CONTEXTO INSTITUCIONAL
+El análisis es para la **Licenciatura en Gobernanza de Datos** de la **Universidad Católica de La Plata (UCALP)**, Facultad de Ciencias Exactas e Ingeniería. Es una carrera nueva con perfil interdisciplinario (tecnología + gestión + normativa de datos).
+
+## ALUMNO
+**Universidad de origen:** ${uni}
+**Carrera de origen:** ${car}
+${origins.length > 1 ? `El alumno presenta ${origins.length} materias de origen que podrían cubrir en conjunto los contenidos de las materias destino. Evaluá la cobertura COMBINADA.` : `Análisis individual de equivalencia.`}
+
+## ${origins.length > 1 ? "MATERIAS" : "MATERIA"} DE ORIGEN (cursadas por el alumno)
 ${originBlock}
 
-## ${targets.length > 1 ? "MATERIAS" : "MATERIA"} DESTINO (UCALP - Lic. en Gobernanza de Datos)
+## ${targets.length > 1 ? "MATERIAS" : "MATERIA"} DESTINO UCALP
 ${targetBlock}
 
-## INSTRUCCIONES DE ANÁLISIS
-${origins.length > 1
-  ? "Evaluá la cobertura COMBINADA de todas las materias de origen sobre cada materia destino. Los contenidos de las distintas materias de origen se suman."
-  : "Evaluá la cobertura de la materia de origen sobre cada materia destino por separado."}
-Analizá unidad por unidad de cada materia destino y determiná qué porcentaje de cobertura tienen las materias de origen. Sé riguroso.
+## TABLA COMPARATIVA DE CARGA HORARIA
+**Origen:**
+| Materia | Carga horaria |
+|---|---|
+${originHoursTable}
 
-## CRITERIOS DE CLASIFICACIÓN
-- **EQUIVALENCIA TOTAL**: La(s) materia(s) de origen cubren al menos el 80% de los contenidos de TODAS las unidades de la materia destino.
-- **EQUIVALENCIA PARCIAL**: Cobertura sustancial (≥70%) de ALGUNAS unidades pero no todas. Indicá qué unidades se reconocen y cuáles debe rendir.
-- **SIN EQUIVALENCIA**: Menos del 50% de cobertura global o enfoques fundamentalmente distintos.
-- **NO EVALUABLE**: Programa provisional insuficiente para juicio.
+**Destino UCALP:**
+| Materia | Carga horaria | Créditos |
+|---|---|---|
+${targetHoursTable}
 
-## FORMATO DE RESPUESTA (SOLO JSON, sin backticks ni texto adicional):
+## METODOLOGÍA DE ANÁLISIS (los 3 ejes son OBLIGATORIOS)
+
+### EJE 1: COBERTURA DE CONTENIDOS (peso: 50%)
+- Analizá UNIDAD POR UNIDAD de la materia destino.
+- Para cada unidad, determiná qué porcentaje de los contenidos mínimos están cubiertos por la(s) materia(s) de origen.
+- NO basta con coincidencia de nombres: los contenidos específicos deben ser equivalentes en profundidad y alcance.
+- Si el programa de origen no fue provisto, el análisis queda severamente limitado — clasificar como NO_EVALUABLE salvo que el nombre de la materia sea idéntico y la carga horaria comparable.
+${origins.length > 1 ? "- Cuando hay varias materias de origen, sumá las coberturas pero NO dupliques: si dos materias cubren el mismo tema, contalo una sola vez." : ""}
+
+### EJE 2: CARGA HORARIA (peso: 30%) — CRÍTICO
+Este eje es DETERMINANTE. La carga horaria refleja la profundidad de tratamiento.
+
+**REGLAS ESTRICTAS:**
+- Origen ≥ 100% de destino → Factor horario: FAVORABLE (no penaliza)
+- Origen entre 75%-99% de destino → Factor horario: ACEPTABLE (penalización leve)
+- Origen entre 50%-74% de destino → Factor horario: INSUFICIENTE → MÁXIMO: Equivalencia Parcial, sin importar la cobertura de contenidos
+- Origen < 50% de destino → Factor horario: MUY INSUFICIENTE → MÁXIMO: Sin Equivalencia
+- Origen NO ESPECIFICADA → Factor horario: INDETERMINADO → Mencionarlo como riesgo, solicitar documentación al alumno. Actuar como si fuera insuficiente para no otorgar equivalencia total sin certeza.
+${origins.length > 1 ? "- Con varias materias de origen, SUMÁ las cargas horarias de las que cubren contenidos relevantes." : ""}
+
+**Cálculo explícito obligatorio:** Incluí en el JSON el campo "comparacion_carga_horaria" con formato:
+"Origen: X hs (materia1 + materia2) vs Destino: Y hs → Ratio: X/Y = Z% → [FAVORABLE/ACEPTABLE/INSUFICIENTE/MUY INSUFICIENTE/INDETERMINADO]"
+
+### EJE 3: CORRELATIVIDADES Y COHERENCIA CURRICULAR (peso: 20%)
+- Revisá las correlativas indicadas para cada materia destino.
+- Si la materia destino requiere prerrequisitos (ej: "Matemática" es correlativa de "Probabilidad y Estadística"), evaluá si el alumno cursó algo equivalente a esas correlativas en su carrera de origen.
+- Si hay correlativas no cubiertas, esto NO impide la equivalencia pero DEBE mencionarse como observación porque afecta la secuencia curricular.
+- Para materias de 3° y 4° año, las correlatividades son especialmente relevantes.
+
+## CRITERIOS DE CLASIFICACIÓN FINAL (aplicar los 3 ejes conjuntamente)
+
+| Clasificación | Contenidos | Carga horaria | Resultado |
+|---|---|---|---|
+| **TOTAL** | ≥80% cobertura global | ≥75% de la destino | Equivalencia completa |
+| **PARCIAL** | ≥50% cobertura | ≥50% de la destino | Reconocimiento parcial — indicar unidades a rendir |
+| **SIN_EQUIVALENCIA** | <50% cobertura | O <50% carga horaria | Debe cursar la materia completa |
+| **NO_EVALUABLE** | Programa no provisto o provisorio insuficiente | — | Requiere documentación adicional |
+
+**REGLA DE ORO:** En caso de duda entre TOTAL y PARCIAL, elegir PARCIAL. En caso de duda entre PARCIAL y SIN_EQUIVALENCIA, elegir SIN_EQUIVALENCIA. Es preferible que el alumno rinda temas de más a que le falten conocimientos.
+
+## FORMATO DE RESPUESTA (SOLO JSON válido, sin backticks, sin texto adicional):
 {
   "resultados": [
     ${targets.map(t => `{
       "materia_destino_key": "${targetKeys[targets.indexOf(t)]}",
       "materia_destino_nombre": "${t.name}",
       "es_provisional": ${!t.hasProgram},
-      "clasificacion": "TOTAL" | "PARCIAL" | "SIN_EQUIVALENCIA" | "NO_EVALUABLE",
-      "porcentaje_cobertura_global": <número 0-100>,
+      "clasificacion": "TOTAL | PARCIAL | SIN_EQUIVALENCIA | NO_EVALUABLE",
+      "porcentaje_cobertura_global": 0,
+      "porcentaje_cobertura_contenidos": 0,
+      "comparacion_carga_horaria": "Origen: X hs vs Destino: ${t.totalHours || "?"} hs → Ratio: Z% → FAVORABLE/INSUFICIENTE",
+      "factor_horario": "FAVORABLE | ACEPTABLE | INSUFICIENTE | MUY_INSUFICIENTE | INDETERMINADO",
       "analisis_por_unidad": [
-        { "unidad": <número>, "titulo": "<título>", "cobertura": <número 0-100>, "coincidencias": "<temas>", "faltantes": "<temas>" }
+        { "unidad": 1, "titulo": "", "cobertura": 0, "coincidencias": "", "faltantes": "" }
       ],
-      "unidades_reconocidas": [<números>],
-      "unidades_a_rendir": [<números>],
-      "justificacion": "<explicación>",
-      "recomendacion": "<recomendación>",
-      "observaciones": "<notas>"
+      "unidades_reconocidas": [],
+      "unidades_a_rendir": [],
+      "justificacion": "Análisis detallado integrando contenidos + carga horaria + correlatividades",
+      "observaciones_correlatividades": "Estado de las correlativas del alumno",
+      "recomendacion": "Acción sugerida para el Director de Carrera",
+      "observaciones": "Notas adicionales, riesgos, documentación faltante"
     }`).join(",\n    ")}
   ]
 }`;
@@ -320,12 +434,12 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
     if (!apiKey) { setShowApiKeyModal(true); return; }
     const origins = raOriginSubjects.filter(s => s.name.trim());
     if (origins.length === 0) { setRaError("Ingresá al menos una materia de origen."); return; }
-    if (origins.some(s => !s.program.trim())) { setRaError("Completá el programa de todas las materias de origen."); return; }
+    if (origins.every(s => !s.program.trim())) { setRaError("Ingresá el programa de al menos una materia de origen."); return; }
     if (raTargetSubjects.length === 0) { setRaError("Seleccioná al menos una materia UCALP destino."); return; }
     setRaAnalyzing(true); setRaError(null); setRaResult(null);
     const prompt = buildMultiPrompt(origins, raTargetSubjects);
-    const uni = rStudentUni.includes("Otra") ? customUniversity : rStudentUni;
-    const car = rStudentCareer.includes("Otra") ? customCareer : rStudentCareer;
+    const uni = rStudentUni;
+    const car = rStudentCareer;
     try {
       const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -730,6 +844,63 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
     finally { setTablaEmailSending(false); }
   };
 
+  // ── Save/delete reports ──
+  const saveReport = () => {
+    if (!rStudentName.trim() || raStudentAnalyses.length === 0) return;
+    setReportSaving(true);
+    const summary = {
+      total: raStudentAnalyses.filter(a => a.result?.clasificacion === "TOTAL").length,
+      parcial: raStudentAnalyses.filter(a => a.result?.clasificacion === "PARCIAL").length,
+      sin: raStudentAnalyses.filter(a => a.result?.clasificacion === "SIN_EQUIVALENCIA").length,
+    };
+    const report = {
+      id: Date.now().toString(),
+      student_name: rStudentName,
+      student_dni: rStudentDni,
+      origin_university: rStudentUni,
+      origin_career: rStudentCareer,
+      analyses: raStudentAnalyses,
+      summary,
+      created_at: new Date().toISOString(),
+      created_by: authSession?.user?.id || null,
+    };
+    setSavedReports(prev => [report, ...prev]);
+    const sb = getSupabaseClient();
+    if (sb) {
+      sb.from("reportes_equivalencias").insert({
+        alumno_nombre: report.student_name,
+        alumno_dni: report.student_dni,
+        origin_university: report.origin_university,
+        origin_career: report.origin_career,
+        resultados: { analyses: report.analyses, summary },
+        estado: "generado",
+        firmado_por: "Dir. Francisco Fernández Ruiz",
+        fecha_emision: new Date().toISOString().slice(0, 10),
+        created_at: report.created_at,
+        created_by: report.created_by,
+      }).then(({ error }) => {
+        if (error) console.error("Error saving report:", error.message);
+        else console.log("✓ Reporte guardado en Supabase");
+      }).catch(e => console.error("Error saving report:", e));
+    }
+    setReportSaving(false);
+  };
+
+  const deleteReport = (id) => {
+    if (!confirm("¿Eliminar este reporte?")) return;
+    setSavedReports(prev => prev.filter(r => r.id !== id));
+    const sb = getSupabaseClient();
+    if (sb) {
+      sb.from("reportes_equivalencias").delete().eq("id", id)
+        .then(({ error }) => { if (error) console.error("Delete report error:", error.message); })
+        .catch(e => console.error("Error deleting report:", e));
+    }
+  };
+
+  const loadReport = (report) => {
+    setViewingReport(report);
+  };
+
   const exportCSV = () => {
     if (!analyses.length) return;
     const rows = [["Fecha","Universidad","Carrera","Materia Origen","Materia UCALP","Clasificación","% Cobertura","Unidades reconocidas","Unidades a rendir","Modelo IA"]];
@@ -766,6 +937,7 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
     { id: "dashboard", icon: "📊", label: "Panel" },
     { id: "tabla", icon: "⚡", label: "Tabla" },
     { id: "reporte_alumno", icon: "📄", label: "Reporte Alumno" },
+    { id: "reportes", icon: "📋", label: "Reportes" },
     { id: "plans", icon: "🌐", label: "Planes" },
     { id: "programs", icon: "📋", label: "Programas" },
     { id: "settings", icon: "⚙️", label: "Config." },
@@ -1105,28 +1277,32 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
           };
 
           const saveToSupabase = async () => {
-            if (!effectiveColors || !selectedPlan) return;
+            if (!effectiveColors) { alert("No hay tabla para guardar. Ejecutá el análisis primero."); return; }
             const sb = getSupabaseClient();
             if (!sb) { alert("Supabase no configurado."); return; }
+            // Get plan info from selectedPlan or from savedTablas
+            const planId = tablaSelectedPlanId;
+            const uni = selectedPlan?.university || savedTablas.find(t => t.plan_id === planId)?.origin_university || "";
+            const car = selectedPlan?.career || savedTablas.find(t => t.plan_id === planId)?.origin_career || "";
+            if (!planId) { alert("Seleccioná un plan primero."); return; }
             setTablaSaving(true);
             try {
-              // Upsert by plan_id — insert or update if already exists
               const { error } = await sb.from("equivalencias_tablas").upsert({
-                origin_university: selectedPlan.university,
-                origin_career:     selectedPlan.career,
-                plan_id:           selectedPlan.id,
+                origin_university: uni,
+                origin_career:     car,
+                plan_id:           planId,
                 colors:            effectiveColors,
                 notes:             "",
                 updated_at:        new Date().toISOString()
               }, { onConflict: "plan_id" });
               if (error) throw new Error(error.message);
-              // Reload
               const { data: tablas } = await sb.from("equivalencias_tablas").select("*").order("updated_at", { ascending: false });
               if (tablas) setSavedTablas(tablas.map(r => ({ ...r, colors: typeof r.colors === "string" ? JSON.parse(r.colors) : r.colors })));
-              const newCache = { ...tablaCache, [selectedPlan.id]: effectiveColors };
+              const newCache = { ...tablaCache, [planId]: effectiveColors };
               setTablaCache(newCache);
               saveData("eq-tabla-cache", newCache);
-              alert(`✅ Tabla guardada para: ${selectedPlan.career}`);
+              setTablaEditColors({});
+              alert(`✅ Tabla guardada para: ${car || "plan seleccionado"}`);
             } catch(e) {
               alert("⚠ Error guardando: " + e.message);
             } finally {
@@ -1144,17 +1320,15 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
 
           return (
             <div style={{ animation: "fadeIn 0.3s ease" }}>
-              <div style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
-                <div>
-                  <h2 style={{ fontFamily: "'Outfit', sans-serif", fontSize: 24, color: C.text, margin: 0, fontWeight: 700 }}>
-                    ⚡ Tabla General Provisoria
-                  </h2>
-                  <p style={{ color: C.textSecondary, fontSize: 13, marginTop: 5, lineHeight: 1.5, maxWidth: 600 }}>
-                    Análisis en 1 consulta IA. <strong>Es orientativo</strong> — editá manualmente si querés ajustar y luego guardá en Supabase para tener la tabla disponible siempre.
-                  </p>
-                </div>
-                {effectiveColors && selectedPlan && (
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ marginBottom: 20, textAlign: "center" }}>
+                <h2 style={{ fontFamily: "'Outfit', sans-serif", fontSize: 24, color: C.text, margin: 0, fontWeight: 700 }}>
+                  ⚡ Tabla General Provisoria
+                </h2>
+                <p style={{ color: C.textSecondary, fontSize: 13, marginTop: 5, lineHeight: 1.5 }}>
+                  Análisis en 1 consulta IA. <strong>Es orientativo</strong> — editá manualmente si querés ajustar y luego guardá en Supabase para tener la tabla disponible siempre.
+                </p>
+                {effectiveColors && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap", marginTop: 14 }}>
                     <button onClick={() => setTablaEditMode(!tablaEditMode)} style={{
                       padding: "8px 16px", borderRadius: 7, border: `1.5px solid ${tablaEditMode ? C.amber : C.border}`,
                       background: tablaEditMode ? C.amberSoft : C.surface, color: tablaEditMode ? C.amber : C.textSecondary,
@@ -1215,28 +1389,32 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
 
               {/* Saved tablas from Supabase */}
               {savedTablas.length > 0 && (
-                <div style={{ ...cardStyle, marginBottom: 16, padding: "12px 18px" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#3ECF8E", marginBottom: 8 }}>🗄️ Tablas guardadas en Supabase</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {savedTablas.map(t => (
-                      <button key={t.id} onClick={() => {
-                        // Load this tabla's colors into cache
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, padding: "10px 16px", borderRadius: 8, background: "#3ECF8E08", border: "1px solid #3ECF8E22" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#3ECF8E", flexShrink: 0 }}>🗄️ Tablas guardadas:</span>
+                  <select
+                    value={savedTablas.find(t => t.plan_id === tablaSelectedPlanId)?.id || ""}
+                    onChange={e => {
+                      const t = savedTablas.find(st => st.id === e.target.value);
+                      if (t) {
                         const newCache = { ...tablaCache, [t.plan_id]: t.colors };
                         setTablaCache(newCache);
                         saveData("eq-tabla-cache", newCache);
                         setTablaSelectedPlanId(t.plan_id);
                         setTablaEditColors({});
-                      }} style={{
-                        padding: "6px 14px", borderRadius: 6, border: "1px solid #3ECF8E22",
-                        background: "#3ECF8E10", color: "#2A9D6A", cursor: "pointer", fontSize: 12, fontWeight: 600
-                      }}>
-                        {t.origin_career} — {t.origin_university?.replace("Universidad ", "U. ")}
-                        <span style={{ fontSize: 10, color: "#3ECF8E", marginLeft: 6 }}>
-                          {new Date(t.updated_at).toLocaleDateString("es-AR")}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
+                      }
+                    }}
+                    style={{ ...selectStyle, flex: 1, fontSize: 12, padding: "7px 10px", borderColor: "#3ECF8E44", color: "#2A9D6A" }}
+                  >
+                    <option value="">— Seleccionar tabla guardada ({savedTablas.length}) —</option>
+                    {savedTablas
+                      .filter(t => !tablaSearchQuery || `${t.origin_career} ${t.origin_university}`.toLowerCase().includes(tablaSearchQuery.toLowerCase()))
+                      .map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.origin_career} — {t.origin_university?.replace("Universidad ", "U. ")} ({new Date(t.updated_at).toLocaleDateString("es-AR")})
+                        </option>
+                      ))
+                    }
+                  </select>
                 </div>
               )}
 
@@ -1265,7 +1443,17 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
                       </div>
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                        {savedPlans.map(plan => {
+                        {savedPlans.length > 4 && (
+                          <input
+                            placeholder="🔍 Buscar plan..."
+                            value={tablaSearchQuery}
+                            onChange={e => setTablaSearchQuery(e.target.value)}
+                            style={{ ...inputStyle, fontSize: 11, padding: "6px 10px", marginBottom: 4 }}
+                          />
+                        )}
+                        {savedPlans
+                          .filter(plan => !tablaSearchQuery || `${plan.career} ${plan.university}`.toLowerCase().includes(tablaSearchQuery.toLowerCase()))
+                          .map(plan => {
                           const cached = tablaCache[plan.id];
                           const isSaved = savedTablas.some(t => t.plan_id === plan.id);
                           const isSelected = tablaSelectedPlanId === plan.id;
@@ -1505,13 +1693,25 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
                       </div>
                       <div>
                         <Label>Universidad de origen</Label>
-                        <select value={rStudentUni} onChange={e => setRStudentUni(e.target.value)} style={selectStyle}>{COMMON_UNIVERSITIES.map(u => <option key={u} value={u}>{u}</option>)}</select>
-                        {rStudentUni.includes("Otra") && <input placeholder="Nombre..." value={customUniversity} onChange={e => setCustomUniversity(e.target.value)} style={{ ...inputStyle, marginTop: 6 }} />}
+                        <AutocompleteInput
+                          value={rStudentUni}
+                          onChange={setRStudentUni}
+                          placeholder="Escribí el nombre de la universidad..."
+                          getSupabase={getSupabaseClient}
+                          column="universidad"
+                        />
                       </div>
                       <div>
                         <Label>Carrera de origen</Label>
-                        <select value={rStudentCareer} onChange={e => setRStudentCareer(e.target.value)} style={selectStyle}>{COMMON_CAREERS.map(c => <option key={c} value={c}>{c}</option>)}</select>
-                        {rStudentCareer.includes("Otra") && <input placeholder="Nombre..." value={customCareer} onChange={e => setCustomCareer(e.target.value)} style={{ ...inputStyle, marginTop: 6 }} />}
+                        <AutocompleteInput
+                          value={rStudentCareer}
+                          onChange={setRStudentCareer}
+                          placeholder="Escribí el nombre de la carrera..."
+                          getSupabase={getSupabaseClient}
+                          column="carrera"
+                          filterColumn={rStudentUni ? "universidad" : null}
+                          filterValue={rStudentUni || null}
+                        />
                       </div>
                     </div>
                     <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
@@ -1554,7 +1754,7 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
                     <div style={cardStyle}>
                       <SectionTitle icon="🏛" color={C.redAccent} label={`Materia${raOriginSubjects.length > 1 ? "s" : ""} de origen`} />
                       <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 12, lineHeight: 1.5, padding: "6px 10px", borderRadius: 6, background: C.blueSoft, border: `1px solid ${C.blueBorder}` }}>
-                        💡 <b>Podés agregar varias materias de origen</b> si el alumno cursó más de una que cubra la(s) materia(s) destino. También podés seleccionar más de una materia UCALP destino.
+                        💡 <b>Subí los programas de las materias</b> cursadas por el alumno (PDF, DOCX o TXT). Podés subir varios archivos a la vez con el botón "📄 Subir varios archivos". La carga horaria es <b>fundamental</b> para el análisis — completala si la conocés.
                       </div>
 
                       {raOriginSubjects.map((orig, idx) => (
@@ -1565,39 +1765,47 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
                               <button onClick={() => raRemoveOriginSubject(idx)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: C.redAccent, padding: 0 }}>✕</button>
                             )}
                           </div>
-                          <Label>Nombre de la materia</Label>
-                          <input placeholder="Ej: Análisis Matemático I" value={orig.name} onChange={e => raUpdateOriginSubject(idx, "name", e.target.value)} style={inputStyle} />
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 8, marginBottom: 8 }}>
+                            <div>
+                              <Label>Nombre de la materia</Label>
+                              <input placeholder="Ej: Análisis Matemático I" value={orig.name} onChange={e => raUpdateOriginSubject(idx, "name", e.target.value)} style={inputStyle} />
+                            </div>
+                            <div>
+                              <Label>Horas</Label>
+                              <input placeholder="Ej: 96" type="number" value={orig.hours} onChange={e => raUpdateOriginSubject(idx, "hours", e.target.value)} style={inputStyle} />
+                            </div>
+                          </div>
 
                           <Label>Programa / Contenidos</Label>
-                          {idx === 0 && (
-                            <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
-                              {[{ id: "text", icon: "📝", label: "Pegar texto" }, { id: "file", icon: "📄", label: "Subir archivo" }].map(m => (
-                                <button key={m.id} onClick={() => setRaInputMode(m.id)} style={{
-                                  flex: 1, padding: "7px 6px", borderRadius: 6, border: `1.5px solid ${raInputMode === m.id ? C.red : C.border}`,
-                                  background: raInputMode === m.id ? C.redSoft : C.surface, color: raInputMode === m.id ? C.redAccent : C.textSecondary,
-                                  cursor: "pointer", fontSize: 11, fontWeight: raInputMode === m.id ? 600 : 400, transition: "all 0.15s"
-                                }}>{m.icon} {m.label}</button>
-                              ))}
-                            </div>
-                          )}
-
-                          {(idx === 0 && raInputMode === "file") ? (
-                            <div style={{ padding: 16, borderRadius: 8, border: `2px dashed ${C.redBorder}`, background: C.redSoft, textAlign: "center" }}>
-                              <div style={{ fontSize: 28, marginBottom: 6 }}>📄</div>
-                              <div style={{ fontSize: 12, color: C.textSecondary, marginBottom: 10 }}>PDF, DOCX o TXT</div>
-                              <input type="file" accept=".pdf,.docx,.doc,.txt" onChange={(e) => raHandleFileUpload(e, idx)} style={{ fontSize: 12 }} />
-                              {raFileProcessing && <div style={{ marginTop: 8, fontSize: 12, color: C.red, fontWeight: 600 }}>⚙️ Extrayendo...</div>}
-                            </div>
-                          ) : (
-                            <textarea placeholder={"Pegá el programa completo de la materia.\nCuanto más detallado, más preciso el análisis."} value={orig.program} onChange={e => raUpdateOriginSubject(idx, "program", e.target.value)} style={{ ...inputStyle, minHeight: raOriginSubjects.length > 1 ? 100 : 150, resize: "vertical", lineHeight: 1.55 }} />
-                          )}
+                          <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+                            <label style={{
+                              flex: 1, padding: "7px 6px", borderRadius: 6, border: `1.5px solid ${C.border}`,
+                              background: C.surface, color: C.textSecondary, cursor: "pointer", fontSize: 11,
+                              textAlign: "center", transition: "all 0.15s"
+                            }}>
+                              📄 Subir archivo
+                              <input type="file" accept=".pdf,.docx,.doc,.txt" onChange={(e) => raHandleFileUpload(e, idx)} style={{ display: "none" }} />
+                            </label>
+                          </div>
+                          {raFileProcessing && idx === raOriginSubjects.length - 1 && <div style={{ marginBottom: 6, fontSize: 12, color: C.red, fontWeight: 600 }}>⚙️ Extrayendo texto...</div>}
+                          <textarea placeholder={"Pegá el programa completo de la materia.\nCuanto más detallado, más preciso el análisis."} value={orig.program} onChange={e => raUpdateOriginSubject(idx, "program", e.target.value)} style={{ ...inputStyle, minHeight: raOriginSubjects.length > 1 ? 80 : 130, resize: "vertical", lineHeight: 1.55 }} />
                           {orig.program && <div style={{ marginTop: 4, fontSize: 11, color: C.green }}>✓ {orig.program.length} caracteres</div>}
                         </div>
                       ))}
 
-                      <button onClick={raAddOriginSubject} style={{ ...btnOutline, width: "100%", padding: "10px", fontSize: 12, borderStyle: "dashed", borderColor: C.redBorder, color: C.redAccent }}>
-                        + Agregar otra materia de origen
-                      </button>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={raAddOriginSubject} style={{ ...btnOutline, flex: 1, padding: "10px", fontSize: 12, borderStyle: "dashed", borderColor: C.redBorder, color: C.redAccent }}>
+                          + Agregar materia
+                        </button>
+                        <label style={{
+                          ...btnOutline, flex: 1, padding: "10px", fontSize: 12, borderStyle: "dashed",
+                          borderColor: C.blue, color: C.blue, cursor: "pointer", textAlign: "center",
+                          display: "flex", alignItems: "center", justifyContent: "center", gap: 4
+                        }}>
+                          📄 Subir varios archivos
+                          <input type="file" accept=".pdf,.docx,.doc,.txt" multiple onChange={raHandleMultiFileUpload} style={{ display: "none" }} />
+                        </label>
+                      </div>
                     </div>
 
                     {/* Right: Target + action */}
@@ -1605,8 +1813,25 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
                       <div style={cardStyle}>
                         <SectionTitle icon="🎯" color={C.red} label="Materia(s) UCALP destino" />
                         <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 8, lineHeight: 1.5 }}>
-                          Seleccioná una o varias materias destino. Usá <span style={{ background: C.greenSoft, color: C.green, padding: "1px 5px", borderRadius: 3, fontWeight: 700, fontSize: 10 }}>✓</span> para marcar.
+                          Seleccioná una o varias materias destino.
                           {raTargetSubjects.length > 0 && <span style={{ marginLeft: 6, fontWeight: 700, color: C.red }}>{raTargetSubjects.length} seleccionada{raTargetSubjects.length > 1 ? "s" : ""}</span>}
+                        </div>
+                        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                          <button onClick={() => {
+                            const allKeys = Object.entries(UCALP_PLAN).flatMap(([, y]) => Object.entries(y.semestres).flatMap(([, s]) => s.subjects));
+                            setRaTargetSubjects(allKeys);
+                          }} style={{ ...btnOutline, fontSize: 10, padding: "4px 10px" }}>Seleccionar todas</button>
+                          <button onClick={() => setRaTargetSubjects([])} style={{ ...btnOutline, fontSize: 10, padding: "4px 10px" }}>Ninguna</button>
+                          {Object.entries(UCALP_PLAN).map(([yearKey, yearData]) => (
+                            <button key={yearKey} onClick={() => {
+                              const yearKeys = Object.entries(yearData.semestres).flatMap(([, s]) => s.subjects);
+                              const allSelected = yearKeys.every(k => raTargetSubjects.includes(k));
+                              if (allSelected) setRaTargetSubjects(prev => prev.filter(k => !yearKeys.includes(k)));
+                              else setRaTargetSubjects(prev => [...new Set([...prev, ...yearKeys])]);
+                            }} style={{ ...btnOutline, fontSize: 10, padding: "4px 8px", borderColor: C.redBorder, color: C.redAccent }}>
+                              {yearData.label}
+                            </button>
+                          ))}
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: 400, overflow: "auto", paddingRight: 4 }}>
                           {Object.entries(UCALP_PLAN).map(([yearKey, yearData]) => (
@@ -1715,7 +1940,9 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
                             ))}
                           </div>
                           {r.unidades_a_rendir?.length > 0 && <div style={{ marginTop: 14 }}><AlertBox color="amber" icon="📝" title="Unidades a rendir" text={(r.unidades_a_rendir||[]).map(n => { const u2 = (r.analisis_por_unidad||[]).find(x => x.unidad === n); return `Unidad ${n}${u2 ? `: ${u2.titulo}` : ""}`; }).join(" · ")} /></div>}
-                          <div style={{ marginTop: 14 }}><InfoBox color={C.red} title="Justificación" text={r.justificacion} /></div>
+                          {r.comparacion_carga_horaria && <div style={{ marginTop: 10 }}><InfoBox color={C.blue} title="⏱ Carga horaria" text={`${r.comparacion_carga_horaria}${r.factor_horario ? ` — Factor: ${r.factor_horario}` : ""}`} /></div>}
+                          <div style={{ marginTop: 10 }}><InfoBox color={C.red} title="Justificación" text={r.justificacion} /></div>
+                          {r.observaciones_correlatividades && <div style={{ marginTop: 8 }}><InfoBox color="#7B1FA2" title="📚 Correlatividades" text={r.observaciones_correlatividades} /></div>}
                           {r.recomendacion && <div style={{ marginTop: 8 }}><InfoBox color={C.amber} title="Recomendación" text={r.recomendacion} /></div>}
                           {r.observaciones && <div style={{ marginTop: 8 }}><InfoBox color={C.textMuted} title="Observaciones" text={r.observaciones} /></div>}
                         </div>
@@ -1755,9 +1982,15 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
               {raStep === "reporte" && (
                 <div style={{ animation: "fadeIn 0.2s ease" }}>
                   {/* Action bar */}
-                  <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
                     <button onClick={() => setRaStep("analisis")} style={{ ...btnOutline, padding: "9px 16px", fontSize: 12 }}>← Agregar más análisis</button>
                     <button onClick={() => window.print()} style={{ ...btnPrimary, padding: "9px 20px", fontSize: 13 }}>🖨 Imprimir / PDF</button>
+                    <button onClick={() => { saveReport(); }} disabled={reportSaving} style={{
+                      ...btnPrimary, padding: "9px 20px", fontSize: 13, background: "#3ECF8E",
+                      opacity: reportSaving ? 0.6 : 1
+                    }}>
+                      {reportSaving ? "⚙️ Guardando..." : "💾 Guardar reporte"}
+                    </button>
                   </div>
 
                   {/* Full plan table — same beautiful design */}
@@ -1884,6 +2117,188 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
           );
         })()}
 
+        {/* ═══════ REPORTES GUARDADOS ═══════ */}
+        {tab === "reportes" && (
+          <div style={{ animation: "fadeIn 0.3s ease" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 22 }}>
+              <div>
+                <h2 style={{ fontFamily: "'Outfit', sans-serif", fontSize: 24, color: C.text, margin: 0, fontWeight: 700 }}>📋 Reportes Guardados</h2>
+                <p style={{ color: C.textSecondary, fontSize: 13, marginTop: 4 }}>Reportes de equivalencias generados para alumnos ingresantes.</p>
+              </div>
+              <button onClick={() => setTab("reporte_alumno")} style={{ ...btnPrimary, padding: "9px 18px", fontSize: 13 }}>
+                + Nuevo reporte
+              </button>
+            </div>
+
+            {savedReports.length === 0 ? (
+              <div style={{ ...cardStyle, textAlign: "center", padding: 48 }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 6 }}>No hay reportes guardados</div>
+                <div style={{ fontSize: 13, color: C.textSecondary, marginBottom: 20 }}>Generá un reporte desde la pestaña "Reporte Alumno" y guardalo.</div>
+                <button onClick={() => setTab("reporte_alumno")} style={btnPrimary}>📄 Ir a Reporte Alumno</button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {savedReports.map(report => {
+                  const summary = report.summary || {};
+                  const analyses = report.analyses || [];
+                  return (
+                    <div key={report.id} style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+                      <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{report.student_name}</span>
+                            {report.student_dni && <span style={{ fontSize: 12, color: C.textMuted }}>DNI: {report.student_dni}</span>}
+                          </div>
+                          <div style={{ fontSize: 12, color: C.textSecondary, marginTop: 4 }}>
+                            {report.origin_university} — {report.origin_career}
+                          </div>
+                          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+                            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: C.greenSoft, color: C.green, fontWeight: 700 }}>✓ {summary.total || 0}</span>
+                            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: C.amberSoft, color: C.amber, fontWeight: 700 }}>△ {summary.parcial || 0}</span>
+                            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: C.dangerSoft, color: C.redAccent, fontWeight: 700 }}>✗ {summary.sin || 0}</span>
+                            <span style={{ fontSize: 10, color: C.textMuted, marginLeft: 4 }}>
+                              {analyses.length} {analyses.length === 1 ? "análisis" : "análisis"} · {new Date(report.created_at).toLocaleDateString("es-AR", { year: "numeric", month: "short", day: "numeric" })}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                          <button onClick={() => loadReport(report)} style={{ ...btnPrimary, padding: "8px 16px", fontSize: 12 }}>
+                            👁 Ver reporte
+                          </button>
+                          <button onClick={() => deleteReport(report.id)} style={{ ...btnOutline, padding: "8px 12px", fontSize: 12, borderColor: C.redBorder, color: C.redAccent }}>
+                            🗑
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════ REPORT VIEWER MODAL ═══════ */}
+        {viewingReport && (() => {
+          const rpt = viewingReport;
+          const bySubjectView = {};
+          (rpt.analyses || []).forEach(a => { if (!bySubjectView[a.targetSubjectKey]) bySubjectView[a.targetSubjectKey] = []; bySubjectView[a.targetSubjectKey].push(a); });
+          const CLASI_LABEL_V = { TOTAL: "Equivalencia Total", PARCIAL: "Equivalencia Parcial", SIN_EQUIVALENCIA: "Sin Equivalencia", NO_EVALUABLE: "No Evaluable" };
+          const CLASI_COLOR_V = { TOTAL: C.green, PARCIAL: C.amber, SIN_EQUIVALENCIA: C.redAccent, NO_EVALUABLE: C.textMuted };
+          const CLASI_BG_V    = { TOTAL: C.greenSoft, PARCIAL: C.amberSoft, SIN_EQUIVALENCIA: C.dangerSoft, NO_EVALUABLE: C.bg };
+          return (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}
+              onClick={() => setViewingReport(null)}>
+              <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`, maxWidth: 900, width: "100%", maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+                {/* Action bar */}
+                <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.borderLight}`, display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: C.surface, zIndex: 10 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Reporte: {rpt.student_name}</span>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => {
+                      const w = window.open("", "_blank");
+                      const el = document.getElementById("report-viewer-content");
+                      if (el && w) {
+                        w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Reporte ${rpt.student_name}</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>body{margin:0;padding:20px;font-family:'DM Sans',system-ui,sans-serif}@media print{body{padding:10px}}</style>
+</head><body>${el.outerHTML}<script>setTimeout(()=>{window.print();window.close()},500)<\/script></body></html>`);
+                        w.document.close();
+                      }
+                    }} style={{ ...btnPrimary, padding: "7px 14px", fontSize: 12 }}>🖨 Imprimir</button>
+                    <button onClick={() => setViewingReport(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: C.textMuted, padding: "4px 8px" }}>✕</button>
+                  </div>
+                </div>
+
+                {/* Report content */}
+                <div id="report-viewer-content" style={{ padding: 0 }}>
+                  <div style={{ padding: "20px 24px", background: C.red, color: "#fff" }}>
+                    <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 18, fontWeight: 700 }}>
+                      TABLA DE EQUIVALENCIAS — LIC. EN GOBERNANZA DE DATOS
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>
+                      Universidad Católica de La Plata · Facultad de Ciencias Exactas e Ingeniería
+                      {` · Alumno: ${rpt.student_name}`}
+                      {rpt.student_dni && ` (DNI: ${rpt.student_dni})`}
+                      {` · Origen: ${rpt.origin_university} — ${rpt.origin_career}`}
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
+                      Fecha: {new Date(rpt.created_at).toLocaleDateString("es-AR", { year: "numeric", month: "long", day: "numeric" })}
+                    </div>
+                  </div>
+
+                  <div style={{ padding: "10px 24px", background: C.bg, borderBottom: `1px solid ${C.borderLight}`, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    {[["TOTAL", "Equivalencia Total"], ["PARCIAL", "Equivalencia Parcial"], ["SIN_EQUIVALENCIA", "Sin Equivalencia"], ["NO_EVALUABLE", "No analizada"]].map(([k, label]) => (
+                      <div key={k} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <span style={{ width: 10, height: 10, borderRadius: 2, background: CLASI_COLOR_V[k], display: "inline-block" }} />
+                        <span style={{ fontSize: 11, color: C.textSecondary }}>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {Object.entries(UCALP_PLAN).map(([yearKey, yearData]) => (
+                    <div key={yearKey}>
+                      <div style={{ padding: "8px 24px", background: C.redSoft, borderBottom: `1px solid ${C.redBorder}`, borderTop: `1px solid ${C.redBorder}` }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: C.redAccent }}>{yearData.label}</span>
+                      </div>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ background: C.bg }}>
+                            {["#", "Materia UCALP", "Materia origen", "Resultado", "%"].map((h, i) => (
+                              <th key={i} style={{ padding: "7px 12px", fontSize: 10, fontWeight: 700, color: C.textMuted, textAlign: i >= 3 ? "center" : "left", letterSpacing: "0.3px", textTransform: "uppercase", borderBottom: `1px solid ${C.borderLight}` }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(yearData.semestres).flatMap(([semKey, semData]) =>
+                            semData.subjects.map((key, rowIdx) => {
+                              const prog = UCALP_PROGRAMS[key];
+                              if (!prog) return null;
+                              const matchingA = bySubjectView[key] || [];
+                              const best = matchingA.sort((a, b) => (b.result?.porcentaje_cobertura_global || 0) - (a.result?.porcentaje_cobertura_global || 0))[0];
+                              const clasi = best?.result?.clasificacion;
+                              const pct = best?.result?.porcentaje_cobertura_global;
+                              const rowBg = clasi ? (CLASI_BG_V[clasi] || C.surface) : (rowIdx % 2 === 0 ? C.surface : C.bg);
+                              return (
+                                <tr key={key} style={{ background: rowBg }}>
+                                  <td style={{ padding: "8px 12px", fontSize: 11, color: C.textMuted, textAlign: "center" }}>{prog.cod}</td>
+                                  <td style={{ padding: "8px 12px", fontSize: 12, fontWeight: 500, color: C.text }}>{prog.name}</td>
+                                  <td style={{ padding: "8px 12px", fontSize: 12, color: best ? C.text : C.textMuted, fontStyle: best ? "normal" : "italic" }}>
+                                    {best ? best.originSubject : "—"}
+                                  </td>
+                                  <td style={{ padding: "8px 12px", textAlign: "center" }}>
+                                    {clasi ? (
+                                      <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, background: CLASI_COLOR_V[clasi] + "20", color: CLASI_COLOR_V[clasi], fontWeight: 700, whiteSpace: "nowrap" }}>
+                                        {clasi === "TOTAL" ? "✓ Total" : clasi === "PARCIAL" ? "△ Parcial" : clasi === "SIN_EQUIVALENCIA" ? "✗ Sin Equiv." : "— N/E"}
+                                      </span>
+                                    ) : (
+                                      <span style={{ fontSize: 11, color: C.textMuted }}>—</span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: "8px 12px", fontSize: 11, textAlign: "center", fontWeight: pct != null ? 600 : 400, color: pct != null ? (pct >= 70 ? C.green : pct >= 40 ? C.amber : C.redAccent) : C.textMuted }}>
+                                    {pct != null ? `${pct}%` : "—"}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+
+                  <div style={{ padding: "16px 24px", background: C.bg, borderTop: `1px solid ${C.borderLight}` }}>
+                    <div style={{ marginTop: 8, fontSize: 11, color: C.textMuted, borderTop: `1px dashed ${C.borderLight}`, paddingTop: 10 }}>
+                      Análisis realizado con asistencia de inteligencia artificial. Los resultados provisionales están sujetos a revisión por el Director de Carrera.
+                      Firmado: Dir. Francisco Fernández Ruiz — Lic. en Gobernanza de Datos — UCALP
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ═══════ PLANES ═══════ */}
         {tab === "plans" && (
           <div style={{ animation: "fadeIn 0.3s ease" }}>
@@ -1896,13 +2311,25 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
                 <div>
                   <Label>Universidad</Label>
-                  <select value={originUniversity} onChange={e => setOriginUniversity(e.target.value)} style={selectStyle}>{COMMON_UNIVERSITIES.map(u => <option key={u} value={u}>{u}</option>)}</select>
-                  {originUniversity.includes("Otra") && <input placeholder="Nombre..." value={customUniversity} onChange={e => setCustomUniversity(e.target.value)} style={{ ...inputStyle, marginTop: 6 }} />}
+                  <AutocompleteInput
+                    value={originUniversity}
+                    onChange={setOriginUniversity}
+                    placeholder="Escribí el nombre de la universidad..."
+                    getSupabase={getSupabaseClient}
+                    column="universidad"
+                  />
                 </div>
                 <div>
                   <Label>Carrera</Label>
-                  <select value={originCareer} onChange={e => setOriginCareer(e.target.value)} style={selectStyle}>{COMMON_CAREERS.map(c => <option key={c} value={c}>{c}</option>)}</select>
-                  {originCareer.includes("Otra") && <input placeholder="Nombre..." value={customCareer} onChange={e => setCustomCareer(e.target.value)} style={{ ...inputStyle, marginTop: 6 }} />}
+                  <AutocompleteInput
+                    value={originCareer}
+                    onChange={setOriginCareer}
+                    placeholder="Escribí el nombre de la carrera..."
+                    getSupabase={getSupabaseClient}
+                    column="carrera"
+                    filterColumn={originUniversity ? "universidad" : null}
+                    filterValue={originUniversity || null}
+                  />
                 </div>
               </div>
 
@@ -2003,8 +2430,8 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
                     <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 6 }}>{sheetsData.length} filas importadas</div>
                     <button onClick={() => {
                       const subjects = sheetsData.slice(1).map(r => r[0]).filter(s => s && s.length > 2);
-                      const uni = originUniversity.includes("Otra") ? customUniversity : originUniversity;
-                      const car = originCareer.includes("Otra") ? customCareer : originCareer;
+                      const uni = originUniversity;
+                      const car = originCareer;
                       savePlan(uni, car, subjects.map(s => ({ name: s, details: "" })), sheetsUrl);
                       setSheetsData(null); setSheetsUrl("");
                     }} style={{ ...btnPrimary, padding: "8px 16px", fontSize: 12, background: C.green }}>
@@ -2095,8 +2522,8 @@ Analizá unidad por unidad de cada materia destino y determiná qué porcentaje 
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                         <button onClick={() => {
-                          const uni = originUniversity.includes("Otra") ? customUniversity : originUniversity;
-                          const car = originCareer.includes("Otra") ? customCareer : originCareer;
+                          const uni = originUniversity;
+                          const car = originCareer;
                           savePlan(uni, car, scrapedPlan.subjects, scrapeUrl || "");
                           setScrapedPlan(null); setScrapeUrl("");
                         }} style={{ ...btnPrimary, padding: "10px 20px", fontSize: 13 }}>

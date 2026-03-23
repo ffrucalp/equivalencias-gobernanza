@@ -1,4 +1,79 @@
-import { C } from "./styles";
+import { useState, useEffect, useRef } from "react";
+import { C, inputStyle } from "./styles";
+
+export function AutocompleteInput({ value, onChange, placeholder, getSupabase, table = "universidades_buscador", column, filterColumn, filterValue, style = {} }) {
+  const [query, setQuery] = useState(value || "");
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const ref = useRef(null);
+  const debounceRef = useRef(null);
+
+  useEffect(() => { setQuery(value || ""); }, [value]);
+
+  useEffect(() => {
+    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const search = (text) => {
+    setQuery(text);
+    onChange(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!text || text.length < 2) { setResults([]); setOpen(false); return; }
+    debounceRef.current = setTimeout(async () => {
+      const supabase = getSupabase ? getSupabase() : null;
+      if (!supabase) return;
+      setLoading(true);
+      try {
+        let q = supabase.from(table).select(column).ilike(column, `%${text}%`).limit(200);
+        if (filterColumn && filterValue) q = q.ilike(filterColumn, `%${filterValue}%`);
+        const { data } = await q;
+        if (data) {
+          const unique = [...new Set(data.map(r => r[column]).filter(v => v && v.length < 150))].sort();
+          setResults(unique.slice(0, 30));
+          setOpen(unique.length > 0);
+        }
+      } catch (e) { console.error(e); }
+      setLoading(false);
+    }, 250);
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative", ...style }}>
+      <input
+        value={query}
+        onChange={(e) => search(e.target.value)}
+        onFocus={() => { if (results.length > 0) setOpen(true); }}
+        placeholder={placeholder}
+        style={{ ...inputStyle, width: "100%", paddingRight: 30 }}
+      />
+      {loading && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: C.textMuted }}>⏳</span>}
+      {open && results.length > 0 && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100,
+          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.12)", maxHeight: 220, overflowY: "auto", marginTop: 2,
+        }}>
+          {results.map((r, i) => (
+            <div key={i} onClick={() => { setQuery(r); onChange(r); setOpen(false); }}
+              style={{
+                padding: "8px 12px", fontSize: 13, cursor: "pointer", color: C.text,
+                borderBottom: i < results.length - 1 ? `1px solid ${C.borderLight}` : "none",
+                background: "transparent",
+              }}
+              onMouseEnter={(e) => e.target.style.background = C.bg}
+              onMouseLeave={(e) => e.target.style.background = "transparent"}
+            >
+              {r}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function SectionTitle({ icon, color, label }) {
   return (
