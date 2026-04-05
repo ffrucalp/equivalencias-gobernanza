@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { C, inputStyle } from "./styles";
+import { searchUniversidades, searchCarreras } from "./siuCache";
 
 export function AutocompleteInput({ value, onChange, placeholder, getSupabase, table = "universidades_buscador", column, filterColumn, filterValue, style = {} }) {
   const [query, setQuery] = useState(value || "");
@@ -17,25 +18,52 @@ export function AutocompleteInput({ value, onChange, placeholder, getSupabase, t
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  // ── Búsqueda local (instantánea) usando el caché SIU ──
+  const searchLocal = (text) => {
+    if (column === "universidad") {
+      return searchUniversidades(text, 30);
+    } else if (column === "carrera") {
+      return searchCarreras(text, filterValue || null, 30);
+    }
+    return null; // columna no reconocida → fallback
+  };
+
+  // ── Fallback a Supabase si el caché no está listo ──
+  const searchRemote = async (text) => {
+    const supabase = getSupabase ? getSupabase() : null;
+    if (!supabase) return [];
+    try {
+      let q = supabase.from(table).select(column).ilike(column, `%${text}%`).limit(200);
+      if (filterColumn && filterValue) q = q.ilike(filterColumn, `%${filterValue}%`);
+      const { data } = await q;
+      if (data) {
+        return [...new Set(data.map(r => r[column]).filter(v => v && v.length < 150))].sort().slice(0, 30);
+      }
+    } catch (e) { console.error(e); }
+    return [];
+  };
+
   const search = (text) => {
     setQuery(text);
     onChange(text);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!text || text.length < 2) { setResults([]); setOpen(false); return; }
+
+    // Intentar búsqueda local primero (instantánea, sin debounce)
+    const localResults = searchLocal(text);
+    if (localResults !== null) {
+      setResults(localResults);
+      setOpen(localResults.length > 0);
+      setLoading(false);
+      return;
+    }
+
+    // Fallback: Supabase con debounce
+    setLoading(true);
     debounceRef.current = setTimeout(async () => {
-      const supabase = getSupabase ? getSupabase() : null;
-      if (!supabase) return;
-      setLoading(true);
-      try {
-        let q = supabase.from(table).select(column).ilike(column, `%${text}%`).limit(200);
-        if (filterColumn && filterValue) q = q.ilike(filterColumn, `%${filterValue}%`);
-        const { data } = await q;
-        if (data) {
-          const unique = [...new Set(data.map(r => r[column]).filter(v => v && v.length < 150))].sort();
-          setResults(unique.slice(0, 30));
-          setOpen(unique.length > 0);
-        }
-      } catch (e) { console.error(e); }
+      const remoteResults = await searchRemote(text);
+      setResults(remoteResults);
+      setOpen(remoteResults.length > 0);
       setLoading(false);
     }, 250);
   };

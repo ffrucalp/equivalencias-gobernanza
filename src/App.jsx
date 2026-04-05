@@ -6,6 +6,7 @@ import { Badge, CoverageCircle, UnitDetail, AlertBox, InfoBox, SectionTitle, Lab
 import { loadData, saveData, parseTextPlan, extractTextFromFile, importFromGoogleSheets, parseHtmlTable, aiExtractSubjects, scrapeStudyPlan, buildPrompt, runBatchQuickAnalysis } from "./lib/utils";
 import { isGoogleDriveConfigured, pickFileFromDrive } from "./lib/googleDrive";
 import { searchGmailAttachments, downloadGmailAttachment } from "./lib/gmail";
+import { initSIUCache } from "./lib/siuCache";
 
 export default function EquivalenciasApp() {
   const [tab, setTab] = useState(() => loadData("eq-current-tab", "dashboard"));
@@ -180,6 +181,11 @@ export default function EquivalenciasApp() {
       });
     };
     initAuth();
+
+    // Pre-cargar caché SIU para búsqueda instantánea de universidades/carreras
+    initSIUCache(getSupabaseClient).then(cache => {
+      if (cache) console.log(`SIU cache listo: ${cache.universidades.length} universidades, ${cache.carreras.length} carreras`);
+    });
 
     document.title = "Equivalencias · UCALP Gobernanza de Datos";
     let link = document.querySelector("link[rel~='icon']");
