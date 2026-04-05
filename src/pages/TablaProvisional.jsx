@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { UCALP_PLAN, UCALP_ORDER, UCALP_PROGRAMS, MODELS } from "../lib/constants";
 import { C, cardStyle, inputStyle, selectStyle, btnPrimary, btnOutline } from "../lib/styles";
+import { SectionTitle } from "../lib/components";
 import { saveData, loadData, runBatchQuickAnalysis } from "../lib/utils";
 
 export default function TablaProvisional() {

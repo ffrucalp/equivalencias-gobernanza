@@ -114,6 +114,13 @@ export function AppProvider({ children }) {
       } catch (e) { console.error("Error loading reports:", e); }
     };
 
+    const loadSavedTablas = async (sb) => {
+      try {
+        const { data: tablas } = await sb.from("equivalencias_tablas").select("*").order("updated_at", { ascending: false });
+        if (tablas) setSavedTablas(tablas.map(r => ({ ...r, colors: typeof r.colors === "string" ? JSON.parse(r.colors) : r.colors })));
+      } catch (e) { console.error("Error loading tablas:", e); }
+    };
+
     const initAuth = async () => {
       const sb = getSupabaseClient();
       if (!sb) { setAuthLoading(false); return; }
@@ -126,6 +133,7 @@ export function AppProvider({ children }) {
         await loadPlansFromSupabase(sb);
         await loadProgramAttachments(sb);
         await loadSavedReports(sb);
+        await loadSavedTablas(sb);
         initSIUCache(getSupabaseClient).then(cache => {
           if (cache) console.log(`SIU cache listo: ${cache.universidades.length} universidades, ${cache.carreras.length} carreras`);
         });
@@ -139,8 +147,7 @@ export function AppProvider({ children }) {
           const { data: profile } = await sb.from("profiles").select("*").eq("id", session.user.id).single();
           setAuthProfile(profile);
           if (profile?.openrouter_key && !import.meta.env.VITE_OPENROUTER_KEY) { setApiKey(profile.openrouter_key); saveData("eq-apikey-v2", profile.openrouter_key); }
-          const { data: tablas } = await sb.from("equivalencias_tablas").select("*").order("updated_at", { ascending: false });
-          if (tablas) setSavedTablas(tablas.map(r => ({ ...r, colors: typeof r.colors === "string" ? JSON.parse(r.colors) : r.colors })));
+          await loadSavedTablas(sb);
           await loadPlansFromSupabase(sb);
           await loadProgramAttachments(sb);
           await loadSavedReports(sb);

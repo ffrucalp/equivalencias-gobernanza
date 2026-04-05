@@ -3,7 +3,7 @@ import { useApp } from "../context/AppContext";
 import { getSupabaseClient } from "../supabaseClient";
 import { UCALP_PLAN, UCALP_ORDER, UCALP_PROGRAMS, MODELS } from "../lib/constants";
 import { C, cardStyle, inputStyle, selectStyle, btnPrimary, btnOutline } from "../lib/styles";
-import { Badge, CoverageCircle, UnitDetail, AlertBox, InfoBox, Label, AutocompleteInput } from "../lib/components";
+import { Badge, CoverageCircle, UnitDetail, AlertBox, InfoBox, SectionTitle, Label, AutocompleteInput } from "../lib/components";
 import { extractTextFromFile, saveData } from "../lib/utils";
 
 export default function ReporteAlumno() {

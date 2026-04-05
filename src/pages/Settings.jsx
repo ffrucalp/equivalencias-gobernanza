@@ -1,6 +1,7 @@
 import { useApp } from "../context/AppContext";
 import { MODELS } from "../lib/constants";
 import { C, cardStyle, inputStyle, selectStyle, btnPrimary, btnOutline } from "../lib/styles";
+import { SectionTitle } from "../lib/components";
 import { saveData } from "../lib/utils";
 import { resetSupabaseClient } from "../supabaseClient";
 
@@ -60,7 +61,7 @@ export default function Settings() {
             <div style={cardStyle}>
               <SectionTitle icon="📊" color={C.textSecondary} label="Datos almacenados" />
               <div style={{ fontSize: 13, color: C.textSecondary, marginBottom: 12 }}>
-                {analyses.length} análisis · {stats.universities} universidades · {savedPlans.length} planes guardados
+                {analyses.length} análisis · {dashboardStats.universities} universidades · {savedPlans.length} planes guardados
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {analyses.length > 0 && <>

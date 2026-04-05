@@ -3,7 +3,7 @@ import { useApp } from "../context/AppContext";
 import { getSupabaseClient } from "../supabaseClient";
 import { UCALP_PROGRAMS, MODELS } from "../lib/constants";
 import { C, cardStyle, inputStyle, selectStyle, btnPrimary, btnOutline } from "../lib/styles";
-import { AutocompleteInput, Label } from "../lib/components";
+import { AutocompleteInput, Label, SectionTitle } from "../lib/components";
 import { parseTextPlan, extractTextFromFile, importFromGoogleSheets, parseHtmlTable, aiExtractSubjects, scrapeStudyPlan } from "../lib/utils";
 import { isGoogleDriveConfigured, pickFileFromDrive } from "../lib/googleDrive";
 
