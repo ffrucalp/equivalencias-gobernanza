@@ -4,6 +4,7 @@ import { UCALP_PLAN, UCALP_ORDER, UCALP_PROGRAMS, MODELS } from "../lib/constant
 import { C, cardStyle, inputStyle, selectStyle, btnPrimary, btnOutline } from "../lib/styles";
 import { SectionTitle } from "../lib/components";
 import { saveData, loadData, runBatchQuickAnalysis } from "../lib/utils";
+import { isGoogleDriveConfigured } from "../lib/googleDrive";
 
 export default function TablaProvisional() {
   const {
