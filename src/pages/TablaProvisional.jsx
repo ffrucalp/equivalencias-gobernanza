@@ -11,7 +11,7 @@ export default function TablaProvisional() {
     tablaSelectedPlanId, setTablaSelectedPlanId,
     savedPlans, savedTablas, setSavedTablas,
     tablaCache, setTablaCache,
-    apiKey, selectedModel, setError,
+    apiKey, selectedModel, setError, authSession,
     setShowApiKeyModal, getSupabaseClient, setTab, supabaseUrl
   } = useApp();
 
@@ -255,35 +255,53 @@ const sendTablaByEmail = async (email) => {
 
   const saveToSupabase = async () => {
     if (!effectiveColors) { alert("No hay tabla para guardar. Ejecutá el análisis primero."); return; }
-    const sb = getSupabaseClient();
-    if (!sb) { alert("Supabase no configurado."); return; }
     const planId = tablaSelectedPlanId;
     if (!planId) { alert("Seleccioná un plan primero."); return; }
 
-    // Resolve university/career from multiple sources
     const plan = savedPlans.find(p => p.id === planId);
     const existingTabla = savedTablas.find(t => t.plan_id === planId);
     const uni = plan?.university || existingTabla?.origin_university || "";
     const car = plan?.career || existingTabla?.origin_career || "";
 
+    const sbUrl = import.meta.env.VITE_SUPABASE_URL || localStorage.getItem("eq-supabase-url");
+    const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY || localStorage.getItem("eq-supabase-key");
+    const token = authSession?.access_token;
+    if (!sbUrl || !sbKey) { alert("Supabase no configurado."); return; }
+
     setTablaSaving(true);
+    const userId = authSession?.user?.id;
+    console.log("📤 Guardando tabla...", { planId, car, userId });
+
+    const upsertData = {
+      origin_university: uni,
+      origin_career: car,
+      plan_id: planId,
+      colors: effectiveColors,
+      notes: "",
+      updated_at: new Date().toISOString()
+    };
+    if (userId) upsertData.created_by = userId;
+
     try {
-      const { data: upserted, error } = await sb.from("equivalencias_tablas").upsert({
-        origin_university: uni,
-        origin_career:     car,
-        plan_id:           planId,
-        colors:            effectiveColors,
-        notes:             "",
-        updated_at:        new Date().toISOString()
-      }, { onConflict: "plan_id" }).select().single();
+      const resp = await fetch(`${sbUrl}/rest/v1/equivalencias_tablas`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": sbKey,
+          "Authorization": `Bearer ${token || sbKey}`,
+          "Prefer": "resolution=merge-duplicates,return=minimal"
+        },
+        body: JSON.stringify(upsertData)
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.message || `HTTP ${resp.status}`);
+      }
+      console.log("✓ Tabla guardada en Supabase");
 
-      if (error) throw new Error(error.message);
-
-      // Update local state with the upserted row (no need for separate select query)
       setSavedTablas(prev => {
         const existing = prev.filter(t => t.plan_id !== planId);
-        const newTabla = { ...upserted, colors: typeof upserted.colors === "string" ? JSON.parse(upserted.colors) : upserted.colors };
-        return [newTabla, ...existing];
+        return [{ plan_id: planId, origin_university: uni, origin_career: car, colors: effectiveColors, updated_at: new Date().toISOString(), id: existingTabla?.id || planId }, ...existing];
       });
 
       const newCache = { ...tablaCache, [planId]: effectiveColors };
@@ -292,6 +310,7 @@ const sendTablaByEmail = async (email) => {
       setTablaEditColors({});
       alert(`✅ Tabla guardada para: ${car || "plan seleccionado"}`);
     } catch(e) {
+      console.error("❌ Error guardando tabla:", e.message);
       alert("⚠ Error guardando: " + e.message);
     } finally {
       setTablaSaving(false);

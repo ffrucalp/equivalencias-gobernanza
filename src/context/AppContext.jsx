@@ -194,23 +194,40 @@ export function AppProvider({ children }) {
     const planId = Date.now().toString();
     const plan = { id: planId, date: new Date().toISOString(), university, career, url, subjects };
     setSavedPlans(prev => [plan, ...prev]);
-    const sb = getSupabaseClient();
-    if (!sb) { console.warn("⚠ Supabase no configurado — plan guardado solo localmente"); return plan; }
-    console.log("📤 Guardando plan en Supabase...", planId, university, career);
+
+    // Use direct REST API instead of Supabase client (client's insert hangs)
+    const sbUrl = import.meta.env.VITE_SUPABASE_URL || localStorage.getItem("eq-supabase-url");
+    const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY || localStorage.getItem("eq-supabase-key");
+    const token = authSession?.access_token;
+    if (!sbUrl || !sbKey) { console.warn("⚠ Supabase no configurado"); return plan; }
+
+    const userId = authSession?.user?.id;
+    console.log("📤 Guardando plan...", { planId, university, career, userId });
+
     try {
-      const { data, error } = await sb.from("saved_plans").insert({
-        id: planId, university, career, plan_url: url || "",
-        subjects: JSON.stringify(subjects), created_at: plan.date,
-        created_by: authSession?.user?.id || null
+      const resp = await fetch(`${sbUrl}/rest/v1/saved_plans`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": sbKey,
+          "Authorization": `Bearer ${token || sbKey}`,
+          "Prefer": "return=minimal"
+        },
+        body: JSON.stringify({
+          id: planId, university, career, plan_url: url || "",
+          subjects: JSON.stringify(subjects), created_at: plan.date,
+          created_by: userId || null
+        })
       });
-      if (error) {
-        console.error("❌ Error guardando plan:", error.message, error);
-        alert("⚠ Error guardando en Supabase: " + error.message);
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        console.error("❌ Error Supabase:", resp.status, err.message || err);
+        alert("⚠ Error guardando plan: " + (err.message || resp.status));
       } else {
         console.log("✓ Plan guardado en Supabase:", planId);
       }
     } catch (e) {
-      console.error("❌ Error de red guardando plan:", e);
+      console.error("❌ Error de red:", e.message);
     }
     return plan;
   };
