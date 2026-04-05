@@ -9,7 +9,9 @@ export default function Settings() {
   const {
     apiKey, saveApiKey, selectedModel, saveModel,
     supabaseUrl, supabaseKey, setSupabaseUrl, setSupabaseKey,
-    authProfile, authSession, analyses, savedPlans, dashboardStats
+    authProfile, authSession, analyses, savedPlans, dashboardStats,
+    isDirector, rol, ROL_LABELS, clearAll, exportCSV, handleLogout,
+    setTablaCache
   } = useApp();
 
   return (

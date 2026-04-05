@@ -11,7 +11,7 @@ export default function TablaProvisional() {
     savedPlans, savedTablas, setSavedTablas,
     tablaCache, setTablaCache,
     apiKey, selectedModel, setError,
-    setShowApiKeyModal, getSupabaseClient
+    setShowApiKeyModal, getSupabaseClient, setTab, supabaseUrl
   } = useApp();
 
   const [tablaBatchResult, setTablaBatchResult] = useState(null);
