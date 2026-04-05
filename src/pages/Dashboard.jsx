@@ -1,288 +1,198 @@
-import { createContext, useState, useEffect, useRef, useMemo, useContext } from "react";
-import { getSupabaseClient, resetSupabaseClient } from "../supabaseClient";
-import { MODELS, UCALP_PROGRAMS } from "../lib/constants";
-import { C } from "../lib/styles";
-import { loadData, saveData } from "../lib/utils";
-import { initSIUCache } from "../lib/siuCache";
+import { useState } from "react";
+import { useApp } from "../context/AppContext";
+import { Badge, CoverageCircle, UnitDetail, AlertBox, InfoBox } from "../lib/components";
+import { C, btnPrimary, btnOutline } from "../lib/styles";
 
-const AppContext = createContext(null);
+export default function Dashboard() {
+  const {
+    dashboardStats, savedReports, savedTablas, savedPlans, analyses,
+    setTab, setTablaSelectedPlanId, deleteAnalysis, exportCSV, clearAll
+  } = useApp();
 
-export const useApp = () => useContext(AppContext);
+  const [expandedAnalysis, setExpandedAnalysis] = useState(null);
 
-export function AppProvider({ children }) {
-  // ── Navigation ──
-  const [tab, setTab] = useState(() => loadData("eq-current-tab", "dashboard"));
+  return (
+    <div style={{ animation: "fadeIn 0.3s ease" }}>
+      {/* ── Tarjetas de estadísticas ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14, marginBottom: 32 }}>
+        {[
+          { label: "Reportes", value: dashboardStats.reportes, color: C.red, bg: C.redSoft, border: C.redBorder },
+          { label: "Tablas Prov.", value: dashboardStats.tablas, color: "#6366f1", bg: "#eef2ff", border: "#c7d2fe" },
+          { label: "Equiv. Totales", value: dashboardStats.total, color: C.green, bg: C.greenSoft, border: C.greenBorder },
+          { label: "Equiv. Parciales", value: dashboardStats.parcial, color: C.amber, bg: C.amberSoft, border: C.amberBorder },
+          { label: "Sin Equivalencia", value: dashboardStats.sin, color: C.redAccent, bg: C.dangerSoft, border: C.dangerBorder },
+          { label: "Universidades", value: dashboardStats.universities, color: C.red, bg: C.redSoft, border: C.redBorder },
+          { label: "Planes", value: dashboardStats.planes, color: "#0891b2", bg: "#ecfeff", border: "#a5f3fc" },
+        ].map((s, i) => (
+          <div key={i} style={{ background: s.bg, borderRadius: 12, padding: "18px 16px", border: `1px solid ${s.border}` }}>
+            <div style={{ fontSize: 30, fontWeight: 700, color: s.color, fontFamily: "'Outfit', sans-serif" }}>{s.value}</div>
+            <div style={{ fontSize: 12, color: C.textSecondary, marginTop: 2 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
 
-  // ── Config ──
-  const [apiKey, setApiKey] = useState(import.meta.env.VITE_OPENROUTER_KEY || "");
-  const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
-  const [supabaseUrl, setSupabaseUrl] = useState("");
-  const [supabaseKey, setSupabaseKey] = useState("");
+      {/* ── Reportes de alumnos ── */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h2 style={{ fontFamily: "'Outfit', sans-serif", fontSize: 20, color: C.text, margin: 0, fontWeight: 700 }}>📋 Reportes de Alumnos</h2>
+        <button onClick={() => setTab("reporte_alumno")} style={{ ...btnPrimary, padding: "7px 14px", fontSize: 12 }}>+ Nuevo reporte</button>
+      </div>
 
-  // ── Auth ──
-  const [authSession, setAuthSession] = useState(null);
-  const [authProfile, setAuthProfile] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+      {savedReports.length === 0 ? (
+        <div style={{ background: C.surface, borderRadius: 12, padding: 36, textAlign: "center", border: `1px dashed ${C.border}`, marginBottom: 28 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>📭</div>
+          <div style={{ fontSize: 14, color: C.textSecondary, marginBottom: 14 }}>No hay reportes de alumnos guardados.</div>
+          <button onClick={() => setTab("reporte_alumno")} style={{ ...btnOutline, fontSize: 12 }}>📄 Ir a Reporte Alumno</button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28 }}>
+          {savedReports.slice(0, 10).map(report => {
+            const s = report.summary || {};
+            return (
+              <div key={report.id} onClick={() => setTab("reportes")} style={{
+                background: C.surface, borderRadius: 10, border: `1px solid ${C.border}`, padding: "12px 16px",
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                transition: "box-shadow 0.15s", boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+              }}
+                onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"}
+                onMouseLeave={e => e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.04)"}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{report.student_name} {report.student_dni ? `· DNI ${report.student_dni}` : ""}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>{report.origin_university} — {report.origin_career}</div>
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                  {(s.total > 0) && <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: C.greenSoft, color: C.green, fontWeight: 700 }}>✓ {s.total}</span>}
+                  {(s.parcial > 0) && <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: C.amberSoft, color: C.amber, fontWeight: 700 }}>△ {s.parcial}</span>}
+                  {(s.sin > 0) && <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: C.dangerSoft, color: C.redAccent, fontWeight: 700 }}>✗ {s.sin}</span>}
+                  <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 4 }}>{new Date(report.created_at).toLocaleDateString("es-AR")}</span>
+                </div>
+              </div>
+            );
+          })}
+          {savedReports.length > 10 && (
+            <button onClick={() => setTab("reportes")} style={{ ...btnOutline, alignSelf: "center", fontSize: 12, marginTop: 4 }}>
+              Ver todos ({savedReports.length}) →
+            </button>
+          )}
+        </div>
+      )}
 
-  // ── Data ──
-  const [analyses, setAnalyses] = useState([]);
-  const [savedPlans, setSavedPlans] = useState([]);
-  const [savedReports, setSavedReports] = useState([]);
-  const [savedTablas, setSavedTablas] = useState([]);
-  const [tablaCache, setTablaCache] = useState({});
-  const [programAttachments, setProgramAttachments] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [tablaSelectedPlanId, setTablaSelectedPlanId] = useState(null);
+      {/* ── Tablas provisionales ── */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h2 style={{ fontFamily: "'Outfit', sans-serif", fontSize: 20, color: C.text, margin: 0, fontWeight: 700 }}>📊 Tablas Provisionales</h2>
+        <button onClick={() => setTab("tabla")} style={{ ...btnOutline, padding: "7px 14px", fontSize: 12 }}>Ir a Tablas →</button>
+      </div>
 
-  // ── UI ──
-  const [error, setError] = useState(null);
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
+      {savedTablas.length === 0 && savedPlans.length === 0 ? (
+        <div style={{ background: C.surface, borderRadius: 12, padding: 36, textAlign: "center", border: `1px dashed ${C.border}`, marginBottom: 28 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>📊</div>
+          <div style={{ fontSize: 14, color: C.textSecondary, marginBottom: 14 }}>No hay tablas provisionales ni planes cargados.</div>
+          <button onClick={() => setTab("planes")} style={{ ...btnOutline, fontSize: 12 }}>📥 Cargar un plan de estudios</button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28 }}>
+          {savedTablas.map(tabla => {
+            const colors = tabla.colors || {};
+            const vals = Object.values(colors);
+            const tT = vals.filter(v => v === "TOTAL").length;
+            const tP = vals.filter(v => v === "PARCIAL").length;
+            const tS = vals.filter(v => v === "SIN_EQUIVALENCIA").length;
+            const tTotal = vals.length;
+            return (
+              <div key={tabla.id} onClick={() => { setTablaSelectedPlanId(tabla.plan_id); setTab("tabla"); }} style={{
+                background: C.surface, borderRadius: 10, border: `1px solid ${C.border}`, padding: "12px 16px",
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                transition: "box-shadow 0.15s", boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+              }}
+                onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"}
+                onMouseLeave={e => e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.04)"}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{tabla.origin_career || "Carrera no especificada"}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>{tabla.origin_university || "Universidad no especificada"} · {tTotal} materias evaluadas</div>
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                  {tT > 0 && <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: C.greenSoft, color: C.green, fontWeight: 700 }}>✓ {tT}</span>}
+                  {tP > 0 && <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: C.amberSoft, color: C.amber, fontWeight: 700 }}>△ {tP}</span>}
+                  {tS > 0 && <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: C.dangerSoft, color: C.redAccent, fontWeight: 700 }}>✗ {tS}</span>}
+                  <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 4 }}>{new Date(tabla.updated_at).toLocaleDateString("es-AR")}</span>
+                </div>
+              </div>
+            );
+          })}
+          {savedTablas.length === 0 && savedPlans.length > 0 && (
+            <div style={{ background: C.bg, borderRadius: 10, padding: "12px 16px", fontSize: 13, color: C.textSecondary }}>
+              Hay {savedPlans.length} plan{savedPlans.length > 1 ? "es" : ""} cargado{savedPlans.length > 1 ? "s" : ""} pero sin tabla provisoria generada aún. <span onClick={() => setTab("tabla")} style={{ color: C.red, cursor: "pointer", fontWeight: 600 }}>Ir a Tablas →</span>
+            </div>
+          )}
+        </div>
+      )}
 
-  // ── Auth helpers ──
-  const rol = authProfile?.rol || "lectura";
-  const canWrite = ["director", "decano", "secretaria"].includes(rol);
-  const canAnalyze = ["director", "decano", "secretaria"].includes(rol);
-  const isDirector = rol === "director";
+      {/* ── Análisis individuales legacy ── */}
+      {analyses.length > 0 && (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <h2 style={{ fontFamily: "'Outfit', sans-serif", fontSize: 20, color: C.text, margin: 0, fontWeight: 700 }}>🔍 Análisis Individuales</h2>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={exportCSV} style={btnOutline}>📥 CSV</button>
+              <button onClick={clearAll} style={{ ...btnOutline, borderColor: C.redBorder, color: C.redAccent, fontSize: 12 }}>🗑 Limpiar</button>
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {analyses.map(a => (
+              <div key={a.id} style={{ background: C.surface, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                <div onClick={() => setExpandedAnalysis(expandedAnalysis === a.id ? null : a.id)}
+                  style={{ padding: "12px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <Badge clasificacion={a.result.clasificacion} />
+                      {a.isProvisional && <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: C.amberSoft, color: C.amber, fontWeight: 700, border: `1px solid ${C.amberBorder}` }}>PROVISIONAL</span>}
+                      <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{a.originSubject}</span>
+                      <span style={{ fontSize: 12, color: C.textMuted }}>→</span>
+                      <span style={{ fontSize: 13, color: C.textSecondary }}>{a.targetSubject}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.textMuted, marginTop: 5 }}>{a.originUniversity} · {a.originCareer} · {new Date(a.date).toLocaleDateString("es-AR")}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <CoverageCircle pct={a.result.porcentaje_cobertura_global} />
+                    <span style={{ fontSize: 16, color: C.textMuted, transform: expandedAnalysis === a.id ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</span>
+                  </div>
+                </div>
+                {expandedAnalysis === a.id && (
+                  <div style={{ padding: "0 16px 16px", borderTop: `1px solid ${C.borderLight}`, animation: "fadeIn 0.2s ease" }}>
+                    <div style={{ paddingTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.textSecondary, marginBottom: 4 }}>Análisis por unidad</div>
+                      {(a.result.analisis_por_unidad || []).map((u, i) => (
+                        <UnitDetail key={i} u={u} recognized={(a.result.unidades_reconocidas||[]).includes(u.unidad)} />
+                      ))}
+                      {a.result.unidades_a_rendir?.length > 0 && <AlertBox color="amber" icon="📝" title="Unidades a rendir" text={(a.result.unidades_a_rendir||[]).map(n => { const u2 = (a.result.analisis_por_unidad||[]).find(x => x.unidad === n); return `Unidad ${n}${u2 ? `: ${u2.titulo}` : ""}`; }).join(" · ")} />}
+                      <InfoBox color={C.red} title="Justificación" text={a.result.justificacion} />
+                      {a.result.recomendacion && <InfoBox color={C.amber} title="Recomendación" text={a.result.recomendacion} />}
+                      <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: 11, color: C.textMuted }}>Modelo: {a.model}</span>
+                        <button onClick={(e) => { e.stopPropagation(); deleteAnalysis(a.id); }} style={{ ...btnOutline, borderColor: C.redBorder, color: C.redAccent, padding: "5px 12px", fontSize: 11 }}>Eliminar</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
-  const ROL_LABELS = {
-    director:      { label: "Director", color: C.red, bg: C.redSoft },
-    secretaria:    { label: "Secretaría", color: "#6D28D9", bg: "#EDE9FE" },
-    decano:        { label: "Decano", color: "#1565C0", bg: "#E3F2FD" },
-    otro_director: { label: "Director. (lectura)", color: "#065F46", bg: "#D1FAE5" },
-    lectura:       { label: "Lectura", color: C.textSecondary, bg: C.bg },
-  };
-
-  const sbConfigured = !!(import.meta.env.VITE_SUPABASE_URL || supabaseUrl || loadData("eq-supabase-url", ""));
-  const needsLogin = sbConfigured && !authLoading && !authSession;
-
-  // ── Persist tab ──
-  useEffect(() => { saveData("eq-current-tab", tab); }, [tab]);
-
-  // ── Initialization ──
-  useEffect(() => {
-    const saved = loadData("eq-analyses-v2", []);
-    const key = import.meta.env.VITE_OPENROUTER_KEY || loadData("eq-apikey-v2", "");
-    const model = loadData("eq-model-v2", MODELS[0].id);
-    setAnalyses(saved); setApiKey(key); setSelectedModel(model); setLoading(false);
-    const sbUrl = import.meta.env.VITE_SUPABASE_URL || loadData("eq-supabase-url", "");
-    const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY || loadData("eq-supabase-key", "");
-    const cache = loadData("eq-tabla-cache", {});
-    if (sbUrl) setSupabaseUrl(sbUrl);
-    if (sbKey) setSupabaseKey(sbKey);
-    if (cache) setTablaCache(cache);
-    const lastPlanId = loadData("eq-tabla-last-plan", null);
-    const lastEdits = loadData("eq-tabla-last-edits", {});
-    if (lastPlanId) setTablaSelectedPlanId(lastPlanId);
-
-    // ── Auth init ──
-    const loadPlansFromSupabase = async (sb) => {
-      try {
-        const { data: plans } = await sb.from("saved_plans").select("*").order("created_at", { ascending: false });
-        if (plans) setSavedPlans(plans.map(r => ({
-          ...r,
-          subjects: typeof r.subjects === "string" ? JSON.parse(r.subjects) : r.subjects,
-          url: r.plan_url
-        })));
-      } catch (e) { console.error("Error loading plans:", e); }
-    };
-
-    const loadProgramAttachments = async (sb) => {
-      try {
-        const { data } = await sb.from("programas_adjuntos").select("*");
-        if (data) {
-          const map = {};
-          data.forEach(r => { map[r.subject_key] = r; });
-          setProgramAttachments(map);
-        }
-      } catch (e) { console.error("Error loading program attachments:", e); }
-    };
-
-    const loadSavedReports = async (sb) => {
-      try {
-        const { data } = await sb.from("reportes_equivalencias").select("*").order("created_at", { ascending: false });
-        if (data) setSavedReports(data.map(r => {
-          const resultados = typeof r.resultados === "string" ? JSON.parse(r.resultados) : (r.resultados || {});
-          return {
-            id: r.id, student_name: r.alumno_nombre, student_dni: r.alumno_dni,
-            origin_university: r.origin_university, origin_career: r.origin_career,
-            analyses: resultados.analyses || [], summary: resultados.summary || {},
-            estado: r.estado, firmado_por: r.firmado_por, notas_director: r.notas_director,
-            created_at: r.created_at,
-          };
-        }));
-      } catch (e) { console.error("Error loading reports:", e); }
-    };
-
-    const initAuth = async () => {
-      const sb = getSupabaseClient();
-      if (!sb) { setAuthLoading(false); return; }
-      const { data: { session } } = await sb.auth.getSession();
-      setAuthSession(session);
-      if (session?.user) {
-        const { data: profile } = await sb.from("profiles").select("*").eq("id", session.user.id).single();
-        setAuthProfile(profile);
-        if (profile?.openrouter_key && !import.meta.env.VITE_OPENROUTER_KEY) { setApiKey(profile.openrouter_key); saveData("eq-apikey-v2", profile.openrouter_key); }
-        await loadPlansFromSupabase(sb);
-        await loadProgramAttachments(sb);
-        await loadSavedReports(sb);
-        initSIUCache(getSupabaseClient).then(cache => {
-          if (cache) console.log(`SIU cache listo: ${cache.universidades.length} universidades, ${cache.carreras.length} carreras`);
-        });
-      }
-      setAuthLoading(false);
-
-      // Listen for auth changes — with cleanup
-      const { data: { subscription } } = sb.auth.onAuthStateChange(async (event, session) => {
-        setAuthSession(session);
-        if (session?.user) {
-          const { data: profile } = await sb.from("profiles").select("*").eq("id", session.user.id).single();
-          setAuthProfile(profile);
-          if (profile?.openrouter_key && !import.meta.env.VITE_OPENROUTER_KEY) { setApiKey(profile.openrouter_key); saveData("eq-apikey-v2", profile.openrouter_key); }
-          const { data: tablas } = await sb.from("equivalencias_tablas").select("*").order("updated_at", { ascending: false });
-          if (tablas) setSavedTablas(tablas.map(r => ({ ...r, colors: typeof r.colors === "string" ? JSON.parse(r.colors) : r.colors })));
-          await loadPlansFromSupabase(sb);
-          await loadProgramAttachments(sb);
-          await loadSavedReports(sb);
-        } else {
-          setAuthProfile(null);
-        }
-      });
-
-      // Return cleanup function reference
-      return subscription;
-    };
-
-    let subscription = null;
-    initAuth().then(sub => { subscription = sub; });
-
-    document.title = "Equivalencias · UCALP Gobernanza de Datos";
-    let link = document.querySelector("link[rel~='icon']");
-    if (!link) { link = document.createElement("link"); link.rel = "icon"; link.type = "image/png"; document.head.appendChild(link); }
-    link.href = "/favicon-ucalp-180.png";
-    let link2 = document.querySelector("link[rel='apple-touch-icon']");
-    if (!link2) { link2 = document.createElement("link"); link2.rel = "apple-touch-icon"; document.head.appendChild(link2); }
-    link2.href = "/favicon-ucalp-180.png";
-
-    // Cleanup: unsubscribe auth listener
-    return () => {
-      if (subscription) subscription.unsubscribe();
-    };
-  }, []);
-
-  // ── Shared functions ──
-  const saveApiKey = (k) => {
-    setApiKey(k); saveData("eq-apikey-v2", k);
-    const sb = getSupabaseClient();
-    if (sb && authSession?.user) {
-      sb.from("profiles").update({ openrouter_key: k }).eq("id", authSession.user.id).then(() => {});
-    }
-  };
-  const saveModel = (m) => { setSelectedModel(m); saveData("eq-model-v2", m); };
-
-  const deleteAnalysis = (id) => { const u = analyses.filter(a => a.id !== id); setAnalyses(u); saveData("eq-analyses-v2", u); };
-  const clearAll = () => { if (confirm("¿Eliminar TODAS las equivalencias guardadas?")) { setAnalyses([]); saveData("eq-analyses-v2", []); } };
-
-  const savePlan = (university, career, subjects, url) => {
-    const planId = Date.now().toString();
-    const plan = { id: planId, date: new Date().toISOString(), university, career, url, subjects };
-    setSavedPlans(prev => [plan, ...prev]);
-    const sb = getSupabaseClient();
-    if (sb) {
-      sb.from("saved_plans").insert({
-        id: planId, university, career, plan_url: url || "",
-        subjects: JSON.stringify(subjects), created_at: plan.date
-      }).then(({ error }) => {
-        if (error) console.error("Supabase save error:", error.message);
-      });
-    }
-    return plan;
-  };
-
-  const deletePlan = (id) => {
-    setSavedPlans(prev => prev.filter(p => p.id !== id));
-    const sb = getSupabaseClient();
-    if (sb) {
-      sb.from("saved_plans").delete().eq("id", id).then(({ error }) => {
-        if (error) console.error("Delete error:", error.message);
-      });
-    }
-  };
-
-  const deleteReport = (id) => {
-    if (!confirm("¿Eliminar este reporte?")) return;
-    setSavedReports(prev => prev.filter(r => r.id !== id));
-    const sb = getSupabaseClient();
-    if (sb) {
-      sb.from("reportes_equivalencias").delete().eq("id", id).then(({ error }) => {
-        if (error) console.error("Delete report error:", error.message);
-      });
-    }
-  };
-
-  const exportCSV = () => {
-    if (!analyses.length) return;
-    const rows = [["Fecha","Universidad","Carrera","Materia Origen","Materia UCALP","Clasificación","% Cobertura","Unidades reconocidas","Unidades a rendir","Modelo IA"]];
-    analyses.forEach(a => rows.push([new Date(a.date).toLocaleDateString("es-AR"), a.originUniversity, a.originCareer, a.originSubject, a.targetSubject, a.result.clasificacion, a.result.porcentaje_cobertura_global+"%", (a.result.unidades_reconocidas||[]).join("; "), (a.result.unidades_a_rendir||[]).join("; "), a.model]));
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
-    const blob = new Blob(["\uFEFF"+csv], { type: "text/csv;charset=utf-8" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `equivalencias_ucalp_${new Date().toISOString().slice(0,10)}.csv`; a.click();
-  };
-
-  const handleLogout = async () => {
-    const sb = getSupabaseClient();
-    if (sb) { try { await sb.auth.signOut({ scope: "global" }); } catch (e) { console.error("Logout error:", e); } }
-    setAuthSession(null); setAuthProfile(null);
-    window.location.reload();
-  };
-
-  // ── Dashboard stats (memoized) ──
-  const dashboardStats = useMemo(() => {
-    let rTotal = 0, rParcial = 0, rSin = 0;
-    const rUnis = new Set();
-    savedReports.forEach(r => {
-      rTotal += (r.summary?.total || 0); rParcial += (r.summary?.parcial || 0); rSin += (r.summary?.sin || 0);
-      if (r.origin_university) rUnis.add(r.origin_university);
-    });
-    let tTotal = 0, tParcial = 0, tSin = 0;
-    savedTablas.forEach(t => {
-      if (t.colors && typeof t.colors === "object") {
-        Object.values(t.colors).forEach(v => { if (v === "TOTAL") tTotal++; else if (v === "PARCIAL") tParcial++; else if (v === "SIN_EQUIVALENCIA") tSin++; });
-      }
-      if (t.origin_university) rUnis.add(t.origin_university);
-    });
-    const aTotal = analyses.filter(a => a.result?.clasificacion === "TOTAL").length;
-    const aParcial = analyses.filter(a => a.result?.clasificacion === "PARCIAL").length;
-    const aSin = analyses.filter(a => a.result?.clasificacion === "SIN_EQUIVALENCIA").length;
-    analyses.forEach(a => { if (a.originUniversity) rUnis.add(a.originUniversity); });
-    return {
-      reportes: savedReports.length, tablas: savedTablas.length, planes: savedPlans.length,
-      total: rTotal + tTotal + aTotal, parcial: rParcial + tParcial + aParcial, sin: rSin + tSin + aSin,
-      universities: rUnis.size,
-    };
-  }, [savedReports, savedTablas, analyses, savedPlans]);
-
-  const value = {
-    // Navigation
-    tab, setTab,
-    // Config
-    apiKey, selectedModel, saveApiKey, saveModel, supabaseUrl, supabaseKey, setSupabaseUrl, setSupabaseKey,
-    // Auth
-    authSession, authProfile, authLoading, rol, canWrite, canAnalyze, isDirector, ROL_LABELS, needsLogin, sbConfigured, handleLogout,
-    showProfileMenu, setShowProfileMenu,
-    // Data
-    analyses, setAnalyses, savedPlans, setSavedPlans, savedReports, setSavedReports,
-    savedTablas, setSavedTablas, tablaCache, setTablaCache,
-    tablaSelectedPlanId, setTablaSelectedPlanId,
-    programAttachments, setProgramAttachments,
-    loading,
-    // UI
-    error, setError, showApiKeyModal, setShowApiKeyModal,
-    // Functions
-    deleteAnalysis, clearAll, savePlan, deletePlan, deleteReport, exportCSV, dashboardStats,
-    // Supabase
-    getSupabaseClient,
-  };
-
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+      {/* ── Estado vacío general ── */}
+      {savedReports.length === 0 && savedTablas.length === 0 && analyses.length === 0 && savedPlans.length === 0 && (
+        <div style={{ background: C.surface, borderRadius: 16, padding: 56, textAlign: "center", border: `2px dashed ${C.redBorder}`, marginTop: 8 }}>
+          <div style={{ fontSize: 48, marginBottom: 14 }}>📝</div>
+          <div style={{ fontSize: 18, color: C.text, marginBottom: 6, fontFamily: "'Outfit', sans-serif", fontWeight: 600 }}>Bienvenido al sistema de equivalencias</div>
+          <div style={{ fontSize: 14, color: C.textSecondary, marginBottom: 24 }}>Cargá un plan de estudios o generá un reporte de alumno para comenzar.</div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+            <button onClick={() => setTab("reporte_alumno")} style={btnPrimary}>📄 Reporte Alumno</button>
+            <button onClick={() => setTab("planes")} style={btnOutline}>📥 Cargar Plan</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
