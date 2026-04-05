@@ -196,24 +196,35 @@ const sendTablaByEmail = async (email) => {
     if (!effectiveColors) { alert("No hay tabla para guardar. Ejecutá el análisis primero."); return; }
     const sb = getSupabaseClient();
     if (!sb) { alert("Supabase no configurado."); return; }
-    // Get plan info from selectedPlan or from savedTablas
     const planId = tablaSelectedPlanId;
-    const uni = selectedPlan?.university || savedTablas.find(t => t.plan_id === planId)?.origin_university || "";
-    const car = selectedPlan?.career || savedTablas.find(t => t.plan_id === planId)?.origin_career || "";
     if (!planId) { alert("Seleccioná un plan primero."); return; }
+
+    // Resolve university/career from multiple sources
+    const plan = savedPlans.find(p => p.id === planId);
+    const existingTabla = savedTablas.find(t => t.plan_id === planId);
+    const uni = plan?.university || existingTabla?.origin_university || "";
+    const car = plan?.career || existingTabla?.origin_career || "";
+
     setTablaSaving(true);
     try {
-      const { error } = await sb.from("equivalencias_tablas").upsert({
+      const { data: upserted, error } = await sb.from("equivalencias_tablas").upsert({
         origin_university: uni,
         origin_career:     car,
         plan_id:           planId,
         colors:            effectiveColors,
         notes:             "",
         updated_at:        new Date().toISOString()
-      }, { onConflict: "plan_id" });
+      }, { onConflict: "plan_id" }).select().single();
+
       if (error) throw new Error(error.message);
-      const { data: tablas } = await sb.from("equivalencias_tablas").select("*").order("updated_at", { ascending: false });
-      if (tablas) setSavedTablas(tablas.map(r => ({ ...r, colors: typeof r.colors === "string" ? JSON.parse(r.colors) : r.colors })));
+
+      // Update local state with the upserted row (no need for separate select query)
+      setSavedTablas(prev => {
+        const existing = prev.filter(t => t.plan_id !== planId);
+        const newTabla = { ...upserted, colors: typeof upserted.colors === "string" ? JSON.parse(upserted.colors) : upserted.colors };
+        return [newTabla, ...existing];
+      });
+
       const newCache = { ...tablaCache, [planId]: effectiveColors };
       setTablaCache(newCache);
       saveData("eq-tabla-cache", newCache);
