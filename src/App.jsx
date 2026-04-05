@@ -851,45 +851,69 @@ ${origins.length > 1 ? "- Con varias materias de origen, SUMÁ las cargas horari
   };
 
   // ── Save/delete reports ──
-  const saveReport = () => {
-    if (!rStudentName.trim() || raStudentAnalyses.length === 0) return;
+  const saveReport = async () => {
+    if (!rStudentName.trim() || raStudentAnalyses.length === 0 || reportSaving) return;
     setReportSaving(true);
-    const summary = {
-      total: raStudentAnalyses.filter(a => a.result?.clasificacion === "TOTAL").length,
-      parcial: raStudentAnalyses.filter(a => a.result?.clasificacion === "PARCIAL").length,
-      sin: raStudentAnalyses.filter(a => a.result?.clasificacion === "SIN_EQUIVALENCIA").length,
-    };
-    const report = {
-      id: Date.now().toString(),
-      student_name: rStudentName,
-      student_dni: rStudentDni,
-      origin_university: rStudentUni,
-      origin_career: rStudentCareer,
-      analyses: raStudentAnalyses,
-      summary,
-      created_at: new Date().toISOString(),
-      created_by: authSession?.user?.id || null,
-    };
-    setSavedReports(prev => [report, ...prev]);
-    const sb = getSupabaseClient();
-    if (sb) {
-      sb.from("reportes_equivalencias").insert({
-        alumno_nombre: report.student_name,
-        alumno_dni: report.student_dni,
-        origin_university: report.origin_university,
-        origin_career: report.origin_career,
-        resultados: { analyses: report.analyses, summary },
-        estado: "generado",
-        firmado_por: "Dir. Francisco Fernández Ruiz",
-        fecha_emision: new Date().toISOString().slice(0, 10),
-        created_at: report.created_at,
-        created_by: report.created_by,
-      }).then(({ error }) => {
-        if (error) console.error("Error saving report:", error.message);
-        else console.log("✓ Reporte guardado en Supabase");
-      }).catch(e => console.error("Error saving report:", e));
+    try {
+      const summary = {
+        total: raStudentAnalyses.filter(a => a.result?.clasificacion === "TOTAL").length,
+        parcial: raStudentAnalyses.filter(a => a.result?.clasificacion === "PARCIAL").length,
+        sin: raStudentAnalyses.filter(a => a.result?.clasificacion === "SIN_EQUIVALENCIA").length,
+      };
+      const sb = getSupabaseClient();
+      if (sb) {
+        const { data: inserted, error } = await sb.from("reportes_equivalencias").insert({
+          alumno_nombre: rStudentName,
+          alumno_dni: rStudentDni,
+          origin_university: rStudentUni,
+          origin_career: rStudentCareer,
+          resultados: { analyses: raStudentAnalyses, summary },
+          estado: "generado",
+          firmado_por: "Dir. Francisco Fernández Ruiz",
+          fecha_emision: new Date().toISOString().slice(0, 10),
+          created_at: new Date().toISOString(),
+          created_by: authSession?.user?.id || null,
+        }).select().single();
+        if (error) {
+          console.error("Error saving report:", error.message);
+          alert("Error al guardar el reporte: " + error.message);
+        } else {
+          console.log("✓ Reporte guardado en Supabase");
+          const report = {
+            id: inserted.id,
+            student_name: inserted.alumno_nombre,
+            student_dni: inserted.alumno_dni,
+            origin_university: inserted.origin_university,
+            origin_career: inserted.origin_career,
+            analyses: raStudentAnalyses,
+            summary,
+            estado: inserted.estado,
+            firmado_por: inserted.firmado_por,
+            notas_director: inserted.notas_director,
+            created_at: inserted.created_at,
+          };
+          setSavedReports(prev => [report, ...prev]);
+        }
+      } else {
+        // Sin Supabase: guardar solo localmente (fallback)
+        const report = {
+          id: Date.now().toString(),
+          student_name: rStudentName,
+          student_dni: rStudentDni,
+          origin_university: rStudentUni,
+          origin_career: rStudentCareer,
+          analyses: raStudentAnalyses,
+          summary,
+          created_at: new Date().toISOString(),
+        };
+        setSavedReports(prev => [report, ...prev]);
+      }
+    } catch (e) {
+      console.error("Error saving report:", e);
+      alert("Error inesperado al guardar el reporte.");
+    } finally {
+      setReportSaving(false);
     }
-    setReportSaving(false);
   };
 
   const deleteReport = (id) => {
