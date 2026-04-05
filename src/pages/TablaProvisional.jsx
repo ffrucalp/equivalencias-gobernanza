@@ -166,6 +166,53 @@ const sendTablaByEmail = async (email) => {
   finally { setTablaEmailSending(false); }
 };
 
+  // ── WhatsApp sharing ──
+  const shareViaWhatsApp = async () => {
+    if (!tablaRef.current) return;
+    try {
+      const canvas = await tablaToCanvas();
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+      const file = new File([blob], `tabla-equivalencias-${new Date().toISOString().slice(0,10)}.png`, { type: "image/png" });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: "Tabla de Equivalencias — UCALP", text: "Tabla general provisoria de equivalencias — Lic. en Gobernanza de Datos — UCALP" });
+      } else {
+        const link = document.createElement("a");
+        link.download = file.name;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+        const text = encodeURIComponent("Tabla general provisoria de equivalencias — Lic. en Gobernanza de Datos — UCALP");
+        window.open(`https://wa.me/?text=${text}`, "_blank");
+      }
+    } catch (e) { if (e.name !== "AbortError") setError("Error compartiendo: " + e.message); }
+  };
+
+  // ── Delete saved tabla ──
+  const deleteTabla = async (tablaId) => {
+    if (!confirm("¿Eliminar esta tabla provisoria guardada?")) return;
+    const sb = getSupabaseClient();
+    if (sb) {
+      const { error } = await sb.from("equivalencias_tablas").delete().eq("id", tablaId);
+      if (error) { alert("Error eliminando: " + error.message); return; }
+    }
+    setSavedTablas(prev => prev.filter(t => t.id !== tablaId));
+  };
+
+  // ── Rename saved tabla ──
+  const renameTabla = async (tablaId) => {
+    const tabla = savedTablas.find(t => t.id === tablaId);
+    if (!tabla) return;
+    const newCareer = prompt("Nombre de la carrera:", tabla.origin_career || "");
+    if (newCareer === null) return;
+    const newUni = prompt("Universidad:", tabla.origin_university || "");
+    if (newUni === null) return;
+    const sb = getSupabaseClient();
+    if (sb) {
+      const { error } = await sb.from("equivalencias_tablas").update({ origin_career: newCareer, origin_university: newUni }).eq("id", tablaId);
+      if (error) { alert("Error renombrando: " + error.message); return; }
+    }
+    setSavedTablas(prev => prev.map(t => t.id === tablaId ? { ...t, origin_career: newCareer, origin_university: newUni } : t));
+  };
+
   const selectedPlan = tablaSelectedPlanId
     ? savedPlans.find(p => p.id === tablaSelectedPlanId)
     : null;
@@ -303,6 +350,9 @@ const sendTablaByEmail = async (email) => {
                 ✉️ Enviar
               </button>
             )}
+            <button onClick={shareViaWhatsApp} style={{ ...btnOutline, fontSize: 11, padding: "7px 12px", borderColor: "#25D366", color: "#25D366" }} title="Compartir por WhatsApp">
+              📲 WhatsApp
+            </button>
           </div>
         )}
       </div>
@@ -330,32 +380,52 @@ const sendTablaByEmail = async (email) => {
 
       {/* Saved tablas from Supabase */}
       {savedTablas.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, padding: "10px 16px", borderRadius: 8, background: "#3ECF8E08", border: "1px solid #3ECF8E22" }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#3ECF8E", flexShrink: 0 }}>🗄️ Tablas guardadas:</span>
-          <select
-            value={savedTablas.find(t => t.plan_id === tablaSelectedPlanId)?.id || ""}
-            onChange={e => {
-              const t = savedTablas.find(st => st.id === e.target.value);
-              if (t) {
-                const newCache = { ...tablaCache, [t.plan_id]: t.colors };
-                setTablaCache(newCache);
-                saveData("eq-tabla-cache", newCache);
-                setTablaSelectedPlanId(t.plan_id);
-                setTablaEditColors({});
+        <div style={{ marginBottom: 16, padding: "10px 16px", borderRadius: 8, background: "#3ECF8E08", border: "1px solid #3ECF8E22" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#3ECF8E", flexShrink: 0 }}>🗄️ Tablas guardadas:</span>
+            <select
+              value={savedTablas.find(t => t.plan_id === tablaSelectedPlanId)?.id || ""}
+              onChange={e => {
+                const t = savedTablas.find(st => st.id === e.target.value);
+                if (t) {
+                  const newCache = { ...tablaCache, [t.plan_id]: t.colors };
+                  setTablaCache(newCache);
+                  saveData("eq-tabla-cache", newCache);
+                  setTablaSelectedPlanId(t.plan_id);
+                  setTablaEditColors({});
+                }
+              }}
+              style={{ ...selectStyle, flex: 1, fontSize: 12, padding: "7px 10px", borderColor: "#3ECF8E44", color: "#2A9D6A" }}
+            >
+              <option value="">— Seleccionar tabla guardada ({savedTablas.length}) —</option>
+              {savedTablas
+                .filter(t => !tablaSearchQuery || `${t.origin_career} ${t.origin_university}`.toLowerCase().includes(tablaSearchQuery.toLowerCase()))
+                .map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.origin_career || "Sin nombre"} — {t.origin_university?.replace("Universidad ", "U. ") || "?"} ({new Date(t.updated_at).toLocaleDateString("es-AR")})
+                  </option>
+                ))
               }
-            }}
-            style={{ ...selectStyle, flex: 1, fontSize: 12, padding: "7px 10px", borderColor: "#3ECF8E44", color: "#2A9D6A" }}
-          >
-            <option value="">— Seleccionar tabla guardada ({savedTablas.length}) —</option>
-            {savedTablas
-              .filter(t => !tablaSearchQuery || `${t.origin_career} ${t.origin_university}`.toLowerCase().includes(tablaSearchQuery.toLowerCase()))
-              .map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.origin_career} — {t.origin_university?.replace("Universidad ", "U. ")} ({new Date(t.updated_at).toLocaleDateString("es-AR")})
-                </option>
-              ))
-            }
-          </select>
+            </select>
+          </div>
+          {/* Edit/delete buttons for selected tabla */}
+          {(() => {
+            const selectedTabla = savedTablas.find(t => t.plan_id === tablaSelectedPlanId);
+            if (!selectedTabla) return null;
+            return (
+              <div style={{ display: "flex", gap: 6, alignItems: "center", paddingLeft: 2 }}>
+                <span style={{ fontSize: 11, color: C.textMuted, flex: 1 }}>
+                  {selectedTabla.origin_career || "Sin nombre"} — {selectedTabla.origin_university || "Sin universidad"}
+                </span>
+                <button onClick={() => renameTabla(selectedTabla.id)} style={{ ...btnOutline, fontSize: 10, padding: "3px 8px", color: "#6366f1", borderColor: "#c7d2fe" }} title="Renombrar">
+                  ✏️ Renombrar
+                </button>
+                <button onClick={() => deleteTabla(selectedTabla.id)} style={{ ...btnOutline, fontSize: 10, padding: "3px 8px", color: C.redAccent, borderColor: C.redBorder }} title="Eliminar">
+                  🗑 Eliminar
+                </button>
+              </div>
+            );
+          })()}
         </div>
       )}
 

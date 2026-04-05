@@ -199,9 +199,18 @@ export function AppProvider({ children }) {
       sb.from("saved_plans").insert({
         id: planId, university, career, plan_url: url || "",
         subjects: JSON.stringify(subjects), created_at: plan.date
-      }).then(({ error }) => {
-        if (error) console.error("Supabase save error:", error.message);
+      }).select().single().then(({ data, error }) => {
+        if (error) {
+          console.error("❌ Error guardando plan en Supabase:", error.message);
+          alert("⚠ El plan se guardó localmente pero hubo un error en Supabase: " + error.message);
+        } else {
+          console.log("✓ Plan guardado en Supabase:", data?.id || planId, university, career);
+        }
+      }).catch(e => {
+        console.error("❌ Error de red guardando plan:", e);
       });
+    } else {
+      console.warn("⚠ Supabase no configurado — plan guardado solo localmente");
     }
     return plan;
   };
