@@ -198,7 +198,8 @@ export function AppProvider({ children }) {
     if (sb) {
       sb.from("saved_plans").insert({
         id: planId, university, career, plan_url: url || "",
-        subjects: JSON.stringify(subjects), created_at: plan.date
+        subjects: JSON.stringify(subjects), created_at: plan.date,
+        created_by: authSession?.user?.id || null
       }).select().single().then(({ data, error }) => {
         if (error) {
           console.error("❌ Error guardando plan en Supabase:", error.message);
