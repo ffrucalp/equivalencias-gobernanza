@@ -190,28 +190,27 @@ export function AppProvider({ children }) {
   const deleteAnalysis = (id) => { const u = analyses.filter(a => a.id !== id); setAnalyses(u); saveData("eq-analyses-v2", u); };
   const clearAll = () => { if (confirm("¿Eliminar TODAS las equivalencias guardadas?")) { setAnalyses([]); saveData("eq-analyses-v2", []); } };
 
-  const savePlan = (university, career, subjects, url) => {
+  const savePlan = async (university, career, subjects, url) => {
     const planId = Date.now().toString();
     const plan = { id: planId, date: new Date().toISOString(), university, career, url, subjects };
     setSavedPlans(prev => [plan, ...prev]);
     const sb = getSupabaseClient();
-    if (sb) {
-      sb.from("saved_plans").insert({
+    if (!sb) { console.warn("⚠ Supabase no configurado — plan guardado solo localmente"); return plan; }
+    console.log("📤 Guardando plan en Supabase...", planId, university, career);
+    try {
+      const { data, error } = await sb.from("saved_plans").insert({
         id: planId, university, career, plan_url: url || "",
         subjects: JSON.stringify(subjects), created_at: plan.date,
         created_by: authSession?.user?.id || null
-      }).select().single().then(({ data, error }) => {
-        if (error) {
-          console.error("❌ Error guardando plan en Supabase:", error.message);
-          alert("⚠ El plan se guardó localmente pero hubo un error en Supabase: " + error.message);
-        } else {
-          console.log("✓ Plan guardado en Supabase:", data?.id || planId, university, career);
-        }
-      }).catch(e => {
-        console.error("❌ Error de red guardando plan:", e);
       });
-    } else {
-      console.warn("⚠ Supabase no configurado — plan guardado solo localmente");
+      if (error) {
+        console.error("❌ Error guardando plan:", error.message, error);
+        alert("⚠ Error guardando en Supabase: " + error.message);
+      } else {
+        console.log("✓ Plan guardado en Supabase:", planId);
+      }
+    } catch (e) {
+      console.error("❌ Error de red guardando plan:", e);
     }
     return plan;
   };
