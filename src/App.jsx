@@ -162,6 +162,10 @@ export default function EquivalenciasApp() {
         await loadPlansFromSupabase(sb);
         await loadProgramAttachments(sb);
         await loadSavedReports(sb);
+        // Pre-cargar caché SIU después de auth (la tabla puede tener RLS)
+        initSIUCache(getSupabaseClient).then(cache => {
+          if (cache) console.log(`SIU cache listo: ${cache.universidades.length} universidades, ${cache.carreras.length} carreras`);
+        });
       }
       setAuthLoading(false);
       sb.auth.onAuthStateChange(async (event, session) => {
@@ -181,11 +185,6 @@ export default function EquivalenciasApp() {
       });
     };
     initAuth();
-
-    // Pre-cargar caché SIU para búsqueda instantánea de universidades/carreras
-    initSIUCache(getSupabaseClient).then(cache => {
-      if (cache) console.log(`SIU cache listo: ${cache.universidades.length} universidades, ${cache.carreras.length} carreras`);
-    });
 
     document.title = "Equivalencias · UCALP Gobernanza de Datos";
     let link = document.querySelector("link[rel~='icon']");

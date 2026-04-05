@@ -113,12 +113,12 @@ function notify() {
  * @param {Function} getSupabase – función que retorna el cliente Supabase
  */
 export async function initSIUCache(getSupabase) {
-  // Si ya está cargado en memoria, no hacer nada
-  if (_cache) return _cache;
+  // Si ya está cargado en memoria con datos reales, no hacer nada
+  if (_cache && _cache.universidades && _cache.universidades.length > 0) return _cache;
 
-  // Intentar desde localStorage
+  // Intentar desde localStorage (solo si tiene datos reales)
   const stored = loadCache();
-  if (stored && stored.universidades && stored.carreras) {
+  if (stored && stored.universidades && stored.universidades.length > 0) {
     _cache = stored;
     notify();
     return _cache;
@@ -145,6 +145,14 @@ export async function initSIUCache(getSupabase) {
     console.timeEnd("SIU cache: fetch completo");
     console.log(`SIU cache: ${rows.length} registros cargados`);
 
+    // Si no se obtuvieron filas (posiblemente por RLS sin sesión), no guardar caché vacío
+    if (rows.length === 0) {
+      console.warn("SIU cache: 0 registros obtenidos — no se guarda caché (¿falta autenticación?)");
+      _loading = false;
+      _listeners = [];
+      return null;
+    }
+
     const processed = processRows(rows);
     _cache = processed;
     saveCache(processed);
@@ -165,7 +173,7 @@ export async function initSIUCache(getSupabase) {
 export function getSIUCache() {
   if (!_cache) {
     const stored = loadCache();
-    if (stored && stored.universidades) {
+    if (stored && stored.universidades && stored.universidades.length > 0) {
       _cache = stored;
     }
   }
@@ -177,7 +185,7 @@ export function getSIUCache() {
  */
 export function searchUniversidades(query, limit = 30) {
   const cache = getSIUCache();
-  if (!cache) return null; // null = cache not ready, fallback to Supabase
+  if (!cache || !cache.universidades || cache.universidades.length === 0) return null;
   const q = query.toLowerCase();
   return cache.universidades
     .filter(u => u.toLowerCase().includes(q))
@@ -189,7 +197,7 @@ export function searchUniversidades(query, limit = 30) {
  */
 export function searchCarreras(query, filterUni = null, limit = 30) {
   const cache = getSIUCache();
-  if (!cache) return null;
+  if (!cache || !cache.carreras || cache.carreras.length === 0) return null;
   const q = query.toLowerCase();
 
   let pool;
