@@ -26,6 +26,20 @@ export default function TablaProvisional() {
   const [tablaEmailSending, setTablaEmailSending] = useState(false);
   const tablaRef = useRef(null);
 
+  // ── Progress timer ──
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (tablaBatchLoading) {
+      setElapsedSeconds(0);
+      timerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [tablaBatchLoading]);
+
   useEffect(() => { saveData("eq-tabla-last-plan", tablaSelectedPlanId); }, [tablaSelectedPlanId]);
   useEffect(() => { saveData("eq-tabla-last-edits", tablaEditColors); }, [tablaEditColors]);
 
@@ -437,7 +451,7 @@ const sendTablaByEmail = async (email) => {
                 opacity: (tablaBatchLoading || !apiKey) ? 0.6 : 1
               }}>
                 {tablaBatchLoading
-                  ? <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⚙️</span> Analizando...</>
+                  ? <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⚙️</span> Analizando... ({elapsedSeconds}s)</>
                   : effectiveColors ? "🔄 Re-analizar" : "⚡ Analizar equivalencias"}
               </button>
               {tablaBatchError && <div style={{ marginTop: 8, fontSize: 12, color: C.redAccent }}>⚠ {tablaBatchError}</div>}

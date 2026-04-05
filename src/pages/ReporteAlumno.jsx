@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { getSupabaseClient } from "../supabaseClient";
 import { UCALP_PLAN, UCALP_ORDER, UCALP_PROGRAMS, MODELS } from "../lib/constants";
 import { C, cardStyle, inputStyle, selectStyle, btnPrimary, btnOutline } from "../lib/styles";
 import { Badge, CoverageCircle, UnitDetail, AlertBox, InfoBox, SectionTitle, Label, AutocompleteInput } from "../lib/components";
-import { extractTextFromFile, saveData } from "../lib/utils";
+import { extractTextFromFile, saveData, loadData } from "../lib/utils";
+
+const DRAFT_KEY = "eq-reporte-draft";
 
 export default function ReporteAlumno() {
   const {
@@ -13,15 +15,19 @@ export default function ReporteAlumno() {
     setShowApiKeyModal, setTab, error, setError
   } = useApp();
 
-  // ── Local state ──
-  const [rStudentName, setRStudentName] = useState("");
-  const [rStudentDni, setRStudentDni] = useState("");
-  const [rStudentUni, setRStudentUni] = useState("");
-  const [rStudentCareer, setRStudentCareer] = useState("");
-  const [raStep, setRaStep] = useState("datos");
-  const [raOriginSubjects, setRaOriginSubjects] = useState([{ name: "", program: "", hours: "" }]);
-  const [raTargetSubjects, setRaTargetSubjects] = useState([]);
-  const [raStudentAnalyses, setRaStudentAnalyses] = useState([]);
+  // ── Restore draft from localStorage ──
+  const draft = useRef(loadData(DRAFT_KEY, null)).current;
+  const [draftRestored, setDraftRestored] = useState(!!draft);
+
+  // ── Local state (initialized from draft if available) ──
+  const [rStudentName, setRStudentName] = useState(draft?.name || "");
+  const [rStudentDni, setRStudentDni] = useState(draft?.dni || "");
+  const [rStudentUni, setRStudentUni] = useState(draft?.uni || "");
+  const [rStudentCareer, setRStudentCareer] = useState(draft?.career || "");
+  const [raStep, setRaStep] = useState(draft?.step || "datos");
+  const [raOriginSubjects, setRaOriginSubjects] = useState(draft?.origins || [{ name: "", program: "", hours: "" }]);
+  const [raTargetSubjects, setRaTargetSubjects] = useState(draft?.targets || []);
+  const [raStudentAnalyses, setRaStudentAnalyses] = useState(draft?.analyses || []);
   const [raAnalyzing, setRaAnalyzing] = useState(false);
   const [raError, setRaError] = useState(null);
   const [raResult, setRaResult] = useState(null);
@@ -29,6 +35,50 @@ export default function ReporteAlumno() {
   const [raFileProcessing, setRaFileProcessing] = useState(false);
   const [raFileName, setRaFileName] = useState("");
   const [reportSaving, setReportSaving] = useState(false);
+
+  // ── Progress timer ──
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (raAnalyzing) {
+      setElapsedSeconds(0);
+      timerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [raAnalyzing]);
+
+  // ── Search filter for analyses ──
+  const [searchFilter, setSearchFilter] = useState("");
+
+  // ── Auto-save draft (debounced) ──
+  const saveTimerRef = useRef(null);
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const hasDraftData = rStudentName.trim() || rStudentDni.trim() || raStudentAnalyses.length > 0 ||
+        raOriginSubjects.some(s => s.name.trim() || s.program.trim());
+      if (hasDraftData) {
+        saveData(DRAFT_KEY, {
+          name: rStudentName, dni: rStudentDni, uni: rStudentUni, career: rStudentCareer,
+          step: raStep, origins: raOriginSubjects, targets: raTargetSubjects,
+          analyses: raStudentAnalyses
+        });
+      }
+    }, 2000); // save 2 seconds after last change
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [rStudentName, rStudentDni, rStudentUni, rStudentCareer, raStep, raOriginSubjects, raTargetSubjects, raStudentAnalyses]);
+
+  // ── Clear draft ──
+  const clearDraft = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setRStudentName(""); setRStudentDni(""); setRStudentUni(""); setRStudentCareer("");
+    setRaStep("datos"); setRaOriginSubjects([{ name: "", program: "", hours: "" }]);
+    setRaTargetSubjects([]); setRaStudentAnalyses([]); setRaResult(null); setRaError(null);
+    setDraftRestored(false); setSearchFilter("");
+  };
 
 const raAddOriginSubject = () => setRaOriginSubjects(prev => [...prev, { name: "", program: "", hours: "" }]);
 const raRemoveOriginSubject = (idx) => setRaOriginSubjects(prev => prev.filter((_, i) => i !== idx));
@@ -334,6 +384,8 @@ const saveReport = async () => {
       };
       setSavedReports(prev => [report, ...prev]);
     }
+    // Clear draft after successful save
+    localStorage.removeItem(DRAFT_KEY);
   } catch (e) {
     console.error("Error saving report:", e);
     alert("Error inesperado al guardar el reporte.");
@@ -388,6 +440,26 @@ const saveReport = async () => {
             ))}
           </div>
         </div>
+
+        {/* Draft restored notification */}
+        {draftRestored && (
+          <div style={{ marginBottom: 16, padding: "10px 16px", borderRadius: 8, background: "#EDE9FE", border: "1px solid #C4B5FD", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "#5B21B6" }}>📝 Se restauró un borrador guardado automáticamente.</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setDraftRestored(false)} style={{ ...btnOutline, padding: "4px 12px", fontSize: 11 }}>OK</button>
+              <button onClick={clearDraft} style={{ ...btnOutline, padding: "4px 12px", fontSize: 11, borderColor: "#C4B5FD", color: "#7C3AED" }}>🗑 Descartar borrador</button>
+            </div>
+          </div>
+        )}
+
+        {/* New report button (when there's data) */}
+        {(rStudentName.trim() || raStudentAnalyses.length > 0) && !draftRestored && (
+          <div style={{ marginBottom: 16, display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={() => { if (confirm("¿Iniciar un nuevo reporte? Se perderán los datos no guardados.")) clearDraft(); }} style={{ ...btnOutline, padding: "6px 14px", fontSize: 11 }}>
+              🆕 Nuevo reporte
+            </button>
+          </div>
+        )}
 
         {/* ── STEP 1: DATOS DEL ALUMNO ── */}
         {raStep === "datos" && (
@@ -545,14 +617,31 @@ const saveReport = async () => {
                       </button>
                     ))}
                   </div>
+                  {/* Search filter for subjects */}
+                  <input
+                    type="text" placeholder="🔍 Buscar materia UCALP..."
+                    value={searchFilter} onChange={e => setSearchFilter(e.target.value)}
+                    style={{ ...inputStyle, marginBottom: 10, fontSize: 12, padding: "8px 12px" }}
+                  />
                   <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: 400, overflow: "auto", paddingRight: 4 }}>
-                    {Object.entries(UCALP_PLAN).map(([yearKey, yearData]) => (
+                    {Object.entries(UCALP_PLAN).map(([yearKey, yearData]) => {
+                      // Filter subjects by search
+                      const filteredSemesters = Object.entries(yearData.semestres).map(([semKey, semData]) => ({
+                        semKey, semData,
+                        subjects: semData.subjects.filter(key => {
+                          if (!searchFilter.trim()) return true;
+                          const prog = UCALP_PROGRAMS[key];
+                          return prog?.name?.toLowerCase().includes(searchFilter.toLowerCase());
+                        })
+                      })).filter(s => s.subjects.length > 0);
+                      if (filteredSemesters.length === 0) return null;
+                      return (
                       <div key={yearKey}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>{yearData.label}</div>
-                        {Object.entries(yearData.semestres).map(([semKey, semData]) => (
+                        {filteredSemesters.map(({ semKey, semData, subjects }) => (
                           <div key={semKey} style={{ marginBottom: 6 }}>
                             <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 3, paddingLeft: 4 }}>{semData.label}</div>
-                            {semData.subjects.map(key => {
+                            {subjects.map(key => {
                               const prog = UCALP_PROGRAMS[key];
                               if (!prog) return null;
                               const isSelected = raTargetSubjects.includes(key);
@@ -593,7 +682,8 @@ const saveReport = async () => {
                           </div>
                         ))}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -616,7 +706,7 @@ const saveReport = async () => {
                   ...btnPrimary, padding: "15px 28px", fontSize: 15, opacity: raAnalyzing ? 0.7 : 1, cursor: raAnalyzing ? "wait" : "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 8
                 }}>
-                  {raAnalyzing ? <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⚙️</span> Analizando {raTargetSubjects.length > 1 ? `${raTargetSubjects.length} materias` : ""} con IA...</> : `🔍 Ejecutar análisis${raTargetSubjects.length > 1 ? ` (${raTargetSubjects.length} materias)` : ""}`}
+                  {raAnalyzing ? <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⚙️</span> Analizando {raTargetSubjects.length > 1 ? `${raTargetSubjects.length} materias` : ""} con IA... ({elapsedSeconds}s)</> : `🔍 Ejecutar análisis${raTargetSubjects.length > 1 ? ` (${raTargetSubjects.length} materias)` : ""}`}
                 </button>
               </div>
             </div>
