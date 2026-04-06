@@ -381,7 +381,7 @@ export function AppProvider({ children }) {
     showProfileMenu, setShowProfileMenu,
     // Data
     analyses, setAnalyses, savedPlans, setSavedPlans, savedReports, setSavedReports,
-    savedTablas, setSavedTablas, tablaCache, setTablaCache, ucalpCarreras,
+    savedTablas, setSavedTablas, tablaCache, setTablaCache, ucalpCarreras, setUcalpCarreras,
     tablaSelectedPlanId, setTablaSelectedPlanId,
     programAttachments, setProgramAttachments,
     loading,

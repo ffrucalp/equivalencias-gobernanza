@@ -10,7 +10,7 @@ import { isGoogleDriveConfigured, pickFileFromDrive } from "../lib/googleDrive";
 export default function Planes() {
   const {
     apiKey, selectedModel, savedPlans, savePlan, deletePlan,
-    error, setError, setShowApiKeyModal, setTab, ucalpCarreras
+    error, setError, setShowApiKeyModal, setTab, ucalpCarreras, setUcalpCarreras
   } = useApp();
 
   const [originUniversity, setOriginUniversity] = useState("");
@@ -399,12 +399,26 @@ const handleGoogleDrivePick = async () => {
                         {c.facultad || "UCALP"} · {c.duracion || "?"} · {c.modalidad || "?"} · {c.subjects?.length || 0} materias
                       </div>
                     </div>
-                    <button onClick={(e) => {
-                      e.preventDefault(); e.stopPropagation();
-                      savePlan("Universidad Católica de La Plata", c.nombre, (c.subjects || []).map(s => ({ name: s.name, details: s.duracion || "" })), "");
-                    }} style={{ ...btnOutline, fontSize: 11, padding: "5px 10px", borderColor: C.greenBorder, color: C.green, flexShrink: 0 }}>
-                      💾 Guardar como plan
-                    </button>
+                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                      <button onClick={(e) => {
+                        e.preventDefault(); e.stopPropagation();
+                        savePlan("Universidad Católica de La Plata", c.nombre, (c.subjects || []).map(s => ({ name: s.name, details: s.duracion || "" })), "");
+                      }} style={{ ...btnOutline, fontSize: 11, padding: "5px 10px", borderColor: C.greenBorder, color: C.green }}>
+                        💾 Guardar
+                      </button>
+                      <button onClick={async (e) => {
+                        e.preventDefault(); e.stopPropagation();
+                        if (!confirm(`¿Eliminar "${c.nombre}" de la base de datos UCALP?`)) return;
+                        const sb = getSupabaseClient();
+                        if (sb) {
+                          await sb.from("ucalp_materias").delete().eq("carrera_id", c.id);
+                          await sb.from("ucalp_carreras").delete().eq("id", c.id);
+                        }
+                        setUcalpCarreras(prev => prev.filter(x => x.id !== c.id));
+                      }} style={{ ...btnOutline, fontSize: 11, padding: "5px 8px", borderColor: C.redBorder, color: C.redAccent }}>
+                        🗑
+                      </button>
+                    </div>
                   </summary>
                   <div style={{ padding: "0 16px 14px", display: "flex", flexWrap: "wrap", gap: 4 }}>
                     {(c.subjects || []).map((s, i) => (
