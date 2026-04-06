@@ -28,6 +28,7 @@ export default function ReporteAlumno() {
   const [raOriginSubjects, setRaOriginSubjects] = useState(draft?.origins || [{ name: "", program: "", hours: "" }]);
   const [raTargetSubjects, setRaTargetSubjects] = useState(draft?.targets || []);
   const [raStudentAnalyses, setRaStudentAnalyses] = useState(draft?.analyses || []);
+  const [existingReportId, setExistingReportId] = useState(draft?.existingReportId || null);
   const [raAnalyzing, setRaAnalyzing] = useState(false);
   const [raError, setRaError] = useState(null);
   const [raResult, setRaResult] = useState(null);
@@ -64,7 +65,7 @@ export default function ReporteAlumno() {
         saveData(DRAFT_KEY, {
           name: rStudentName, dni: rStudentDni, uni: rStudentUni, career: rStudentCareer,
           step: raStep, origins: raOriginSubjects, targets: raTargetSubjects,
-          analyses: raStudentAnalyses
+          analyses: raStudentAnalyses, existingReportId: existingReportId
         });
       }
     }, 2000); // save 2 seconds after last change
@@ -77,7 +78,7 @@ export default function ReporteAlumno() {
     setRStudentName(""); setRStudentDni(""); setRStudentUni(""); setRStudentCareer("");
     setRaStep("datos"); setRaOriginSubjects([{ name: "", program: "", hours: "" }]);
     setRaTargetSubjects([]); setRaStudentAnalyses([]); setRaResult(null); setRaError(null);
-    setDraftRestored(false); setSearchFilter("");
+    setDraftRestored(false); setSearchFilter(""); setExistingReportId(null);
   };
 
 const raAddOriginSubject = () => setRaOriginSubjects(prev => [...prev, { name: "", program: "", hours: "" }]);
@@ -336,9 +337,13 @@ const saveReport = async () => {
       parcial: raStudentAnalyses.filter(a => a.result?.clasificacion === "PARCIAL").length,
       sin: raStudentAnalyses.filter(a => a.result?.clasificacion === "SIN_EQUIVALENCIA").length,
     };
-    const sb = getSupabaseClient();
-    if (sb) {
-      const { data: inserted, error } = await sb.from("reportes_equivalencias").insert({
+
+    const sbUrl = import.meta.env.VITE_SUPABASE_URL || localStorage.getItem("eq-supabase-url");
+    const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY || localStorage.getItem("eq-supabase-key");
+    const token = authSession?.access_token;
+
+    if (sbUrl && sbKey) {
+      const reportData = {
         alumno_nombre: rStudentName,
         alumno_dni: rStudentDni,
         origin_university: rStudentUni,
@@ -347,48 +352,77 @@ const saveReport = async () => {
         estado: "generado",
         firmado_por: "Dir. Francisco Fernández Ruiz",
         fecha_emision: new Date().toISOString().slice(0, 10),
-        created_at: new Date().toISOString(),
-        created_by: authSession?.user?.id || null,
-      }).select().single();
-      if (error) {
-        console.error("Error saving report:", error.message);
-        alert("Error al guardar el reporte: " + error.message);
-      } else {
-        console.log("✓ Reporte guardado en Supabase");
+      };
+
+      if (existingReportId) {
+        // ── UPDATE existing report ──
+        console.log("📤 Actualizando reporte...", existingReportId);
+        const resp = await fetch(`${sbUrl}/rest/v1/reportes_equivalencias?id=eq.${existingReportId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", "apikey": sbKey, "Authorization": `Bearer ${token || sbKey}`, "Prefer": "return=representation" },
+          body: JSON.stringify(reportData)
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.message || `HTTP ${resp.status}`);
+        }
+        const [updated] = await resp.json();
+        console.log("✓ Reporte actualizado en Supabase:", existingReportId);
         const report = {
-          id: inserted.id,
-          student_name: inserted.alumno_nombre,
-          student_dni: inserted.alumno_dni,
-          origin_university: inserted.origin_university,
-          origin_career: inserted.origin_career,
-          analyses: raStudentAnalyses,
-          summary,
-          estado: inserted.estado,
-          firmado_por: inserted.firmado_por,
-          notas_director: inserted.notas_director,
-          created_at: inserted.created_at,
+          id: existingReportId, student_name: rStudentName, student_dni: rStudentDni,
+          origin_university: rStudentUni, origin_career: rStudentCareer,
+          analyses: raStudentAnalyses, summary,
+          estado: updated?.estado || "generado", firmado_por: updated?.firmado_por,
+          notas_director: updated?.notas_director, created_at: updated?.created_at,
+        };
+        setSavedReports(prev => prev.map(r => r.id === existingReportId ? report : r));
+        alert("✅ Reporte actualizado correctamente.");
+      } else {
+        // ── INSERT new report ──
+        console.log("📤 Guardando reporte nuevo...");
+        reportData.created_at = new Date().toISOString();
+        reportData.created_by = authSession?.user?.id || null;
+        const resp = await fetch(`${sbUrl}/rest/v1/reportes_equivalencias`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "apikey": sbKey, "Authorization": `Bearer ${token || sbKey}`, "Prefer": "return=representation" },
+          body: JSON.stringify(reportData)
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.message || `HTTP ${resp.status}`);
+        }
+        const [inserted] = await resp.json();
+        console.log("✓ Reporte guardado en Supabase:", inserted?.id);
+        const report = {
+          id: inserted.id, student_name: rStudentName, student_dni: rStudentDni,
+          origin_university: rStudentUni, origin_career: rStudentCareer,
+          analyses: raStudentAnalyses, summary,
+          estado: inserted.estado, firmado_por: inserted.firmado_por,
+          notas_director: inserted.notas_director, created_at: inserted.created_at,
         };
         setSavedReports(prev => [report, ...prev]);
+        alert("✅ Reporte guardado correctamente.");
       }
     } else {
-      // Sin Supabase: guardar solo localmente (fallback)
+      // Sin Supabase: guardar solo localmente
       const report = {
-        id: Date.now().toString(),
-        student_name: rStudentName,
-        student_dni: rStudentDni,
-        origin_university: rStudentUni,
-        origin_career: rStudentCareer,
-        analyses: raStudentAnalyses,
-        summary,
-        created_at: new Date().toISOString(),
+        id: existingReportId || Date.now().toString(),
+        student_name: rStudentName, student_dni: rStudentDni,
+        origin_university: rStudentUni, origin_career: rStudentCareer,
+        analyses: raStudentAnalyses, summary, created_at: new Date().toISOString(),
       };
-      setSavedReports(prev => [report, ...prev]);
+      if (existingReportId) {
+        setSavedReports(prev => prev.map(r => r.id === existingReportId ? report : r));
+      } else {
+        setSavedReports(prev => [report, ...prev]);
+      }
     }
     // Clear draft after successful save
     localStorage.removeItem(DRAFT_KEY);
+    setExistingReportId(null);
   } catch (e) {
     console.error("Error saving report:", e);
-    alert("Error inesperado al guardar el reporte.");
+    alert("⚠ Error al guardar: " + e.message);
   } finally {
     setReportSaving(false);
   }
@@ -442,12 +476,24 @@ const saveReport = async () => {
         </div>
 
         {/* Draft restored notification */}
-        {draftRestored && (
+        {draftRestored && !existingReportId && (
           <div style={{ marginBottom: 16, padding: "10px 16px", borderRadius: 8, background: "#EDE9FE", border: "1px solid #C4B5FD", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 13, color: "#5B21B6" }}>📝 Se restauró un borrador guardado automáticamente.</span>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => setDraftRestored(false)} style={{ ...btnOutline, padding: "4px 12px", fontSize: 11 }}>OK</button>
               <button onClick={clearDraft} style={{ ...btnOutline, padding: "4px 12px", fontSize: 11, borderColor: "#C4B5FD", color: "#7C3AED" }}>🗑 Descartar borrador</button>
+            </div>
+          </div>
+        )}
+
+        {/* Continuing existing report banner */}
+        {existingReportId && (
+          <div style={{ marginBottom: 16, padding: "10px 16px", borderRadius: 8, background: "#ECFDF5", border: "1px solid #6EE7B7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "#065F46" }}>
+              ▶ Continuando reporte de <strong>{rStudentName || "alumno"}</strong> — {raStudentAnalyses.length} análisis previos cargados. Agregá más materias y guardá para actualizar.
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={clearDraft} style={{ ...btnOutline, padding: "4px 12px", fontSize: 11, borderColor: "#6EE7B7", color: "#065F46" }}>🆕 Nuevo reporte</button>
             </div>
           </div>
         )}
@@ -791,7 +837,7 @@ const saveReport = async () => {
                 ...btnPrimary, padding: "9px 20px", fontSize: 13, background: "#3ECF8E",
                 opacity: reportSaving ? 0.6 : 1
               }}>
-                {reportSaving ? "⚙️ Guardando..." : "💾 Guardar reporte"}
+                {reportSaving ? "⚙️ Guardando..." : existingReportId ? "💾 Actualizar reporte" : "💾 Guardar reporte"}
               </button>
             </div>
 

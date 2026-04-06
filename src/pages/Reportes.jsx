@@ -14,7 +14,7 @@ export default function Reportes() {
 
   const loadReport = (report) => setViewingReport(report);
 
-  // ── Duplicate report: load into ReporteAlumno as draft ──
+  // ── Duplicate report: load into ReporteAlumno as NEW draft ──
   const duplicateReport = (report) => {
     saveData("eq-reporte-draft", {
       name: report.student_name || "",
@@ -23,6 +23,22 @@ export default function Reportes() {
       career: report.origin_career || "",
       step: "reporte",
       origins: [],
+      targets: [],
+      analyses: report.analyses || []
+    });
+    setTab("reporte_alumno");
+  };
+
+  // ── Continue report: load into ReporteAlumno keeping the report ID for update ──
+  const continueReport = (report) => {
+    saveData("eq-reporte-draft", {
+      existingReportId: report.id,  // This tells ReporteAlumno to UPDATE instead of INSERT
+      name: report.student_name || "",
+      dni: report.student_dni || "",
+      uni: report.origin_university || "",
+      career: report.origin_career || "",
+      step: "analisis",
+      origins: [{ name: "", program: "", hours: "" }],
       targets: [],
       analyses: report.analyses || []
     });
@@ -153,16 +169,19 @@ export default function Reportes() {
                       <button onClick={() => loadReport(report)} style={{ ...btnPrimary, padding: "8px 16px", fontSize: 12 }}>
                         👁 Ver
                       </button>
+                      <button onClick={() => continueReport(report)} style={{ ...btnOutline, padding: "8px 12px", fontSize: 12, borderColor: "#3ECF8E", color: "#2A9D6A" }} title="Continuar agregando materias">
+                        ▶ Continuar
+                      </button>
                       <button onClick={() => setEditingReport({
                         id: report.id, student_name: report.student_name || "", student_dni: report.student_dni || "",
                         origin_university: report.origin_university || "", origin_career: report.origin_career || ""
                       })} style={{ ...btnOutline, padding: "8px 12px", fontSize: 12 }} title="Editar datos del alumno">
-                        ✏️ Editar
+                        ✏️
                       </button>
-                      <button onClick={() => duplicateReport(report)} style={{ ...btnOutline, padding: "8px 12px", fontSize: 12, borderColor: "#c7d2fe", color: "#6366f1" }} title="Duplicar para editar">
-                        📋 Duplicar
+                      <button onClick={() => duplicateReport(report)} style={{ ...btnOutline, padding: "8px 12px", fontSize: 12, borderColor: "#c7d2fe", color: "#6366f1" }} title="Duplicar como nuevo reporte">
+                        📋
                       </button>
-                      <button onClick={() => deleteReport(report.id)} style={{ ...btnOutline, padding: "8px 12px", fontSize: 12, borderColor: C.redBorder, color: C.redAccent }}>
+                      <button onClick={() => deleteReport(report.id)} style={{ ...btnOutline, padding: "8px 12px", fontSize: 12, borderColor: C.redBorder, color: C.redAccent }} title="Eliminar">
                         🗑
                       </button>
                     </div>
