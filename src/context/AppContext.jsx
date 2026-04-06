@@ -10,8 +10,35 @@ const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
 
 export function AppProvider({ children }) {
-  // ── Navigation ──
-  const [tab, setTab] = useState(() => loadData("eq-current-tab", "dashboard"));
+  // ── Hash-based routing ──
+  const VALID_TABS = ["dashboard", "tabla", "reporte_alumno", "reportes", "plans", "programs", "settings"];
+  const TAB_LABELS = { dashboard: "Panel", tabla: "Tabla", reporte_alumno: "Reporte Alumno", reportes: "Reportes", plans: "Planes", programs: "Programas", settings: "Config." };
+
+  const getTabFromHash = () => {
+    const hash = window.location.hash.replace("#/", "").replace("#", "");
+    return VALID_TABS.includes(hash) ? hash : "dashboard";
+  };
+
+  const [tab, setTabInternal] = useState(getTabFromHash);
+
+  const setTab = (newTab) => {
+    setTabInternal(newTab);
+    window.location.hash = `#/${newTab}`;
+    document.title = `${TAB_LABELS[newTab] || "Panel"} · Equivalencias UCALP`;
+  };
+
+  // Listen for browser back/forward
+  useEffect(() => {
+    const onHashChange = () => {
+      const t = getTabFromHash();
+      setTabInternal(t);
+      document.title = `${TAB_LABELS[t] || "Panel"} · Equivalencias UCALP`;
+    };
+    window.addEventListener("hashchange", onHashChange);
+    // Set initial title
+    document.title = `${TAB_LABELS[getTabFromHash()] || "Panel"} · Equivalencias UCALP`;
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   // ── Config ──
   const [apiKey, setApiKey] = useState(import.meta.env.VITE_OPENROUTER_KEY || "");
@@ -55,9 +82,6 @@ export function AppProvider({ children }) {
 
   const sbConfigured = !!(import.meta.env.VITE_SUPABASE_URL || supabaseUrl || loadData("eq-supabase-url", ""));
   const needsLogin = sbConfigured && !authLoading && !authSession;
-
-  // ── Persist tab ──
-  useEffect(() => { saveData("eq-current-tab", tab); }, [tab]);
 
   // ── Initialization ──
   useEffect(() => {
@@ -163,7 +187,6 @@ export function AppProvider({ children }) {
     let subscription = null;
     initAuth().then(sub => { subscription = sub; });
 
-    document.title = "Equivalencias · UCALP Gobernanza de Datos";
     let link = document.querySelector("link[rel~='icon']");
     if (!link) { link = document.createElement("link"); link.rel = "icon"; link.type = "image/png"; document.head.appendChild(link); }
     link.href = "/favicon-ucalp-180.png";
