@@ -54,7 +54,6 @@ export default function Reportes() {
         });
       }
       const canvas = await window.html2canvas(el, { scale: 2, backgroundColor: "#fff", useCORS: true });
-      const imgData = canvas.toDataURL("image/png");
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pageW = pdf.internal.pageSize.getWidth();
@@ -62,28 +61,14 @@ export default function Reportes() {
       const margin = 8;
       const imgW = pageW - margin * 2;
       const imgH = (canvas.height * imgW) / canvas.width;
-
-      // If content is taller than one page, split into pages
-      let y = margin;
-      let remaining = imgH;
       const pageContentH = pageH - margin * 2;
+      const totalPages = Math.ceil(imgH / pageContentH);
 
-      while (remaining > 0) {
-        if (y > margin) pdf.addPage();
-        const sourceY = (imgH - remaining) * (canvas.height / imgH);
-        const sliceH = Math.min(remaining, pageContentH);
-        const sourceSliceH = sliceH * (canvas.height / imgH);
-
-        // Create a canvas slice
-        const sliceCanvas = document.createElement("canvas");
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = sourceSliceH;
-        const ctx = sliceCanvas.getContext("2d");
-        ctx.drawImage(canvas, 0, sourceY, canvas.width, sourceSliceH, 0, 0, canvas.width, sourceSliceH);
-
-        pdf.addImage(sliceCanvas.toDataURL("image/png"), "PNG", margin, margin, imgW, sliceH);
-        remaining -= pageContentH;
-        y = margin;
+      // Place the full image on each page with Y offset to show the right section
+      for (let page = 0; page < totalPages; page++) {
+        if (page > 0) pdf.addPage();
+        const yOffset = margin - (page * pageContentH);
+        pdf.addImage(canvas.toDataURL("image/png"), "PNG", margin, yOffset, imgW, imgH);
       }
 
       const rpt = viewingReport;
