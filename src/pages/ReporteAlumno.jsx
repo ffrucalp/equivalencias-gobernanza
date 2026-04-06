@@ -696,6 +696,45 @@ const saveReport = async () => {
                                 ✓ {raOriginSubjects.filter(o => o.name.trim()).length} materia{raOriginSubjects.filter(o => o.name.trim()).length !== 1 ? "s" : ""} seleccionada{raOriginSubjects.filter(o => o.name.trim()).length !== 1 ? "s" : ""}
                               </div>
                             )}
+
+                            {/* ── Program upload for selected subjects ── */}
+                            {raOriginSubjects.filter(o => o.name.trim()).length > 0 && (
+                              <div style={{ marginTop: 12, borderTop: `1px solid ${C.borderLight}`, paddingTop: 12 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: C.textSecondary, marginBottom: 8 }}>
+                                  📄 Programas de las materias seleccionadas <span style={{ fontWeight: 400, color: C.textMuted }}>(opcional pero mejora el análisis)</span>
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 300, overflowY: "auto" }}>
+                                  {raOriginSubjects.filter(o => o.name.trim()).map((orig, idx) => {
+                                    const realIdx = raOriginSubjects.indexOf(orig);
+                                    return (
+                                      <div key={realIdx} style={{ padding: "8px 10px", borderRadius: 7, border: `1px solid ${orig.program ? C.greenBorder : C.borderLight}`, background: orig.program ? C.greenSoft : C.surface }}>
+                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                                          <span style={{ fontSize: 12, fontWeight: 600, color: C.text, flex: 1 }}>{orig.name}</span>
+                                          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                            <input placeholder="Hs" type="number" value={orig.hours} onChange={e => raUpdateOriginSubject(realIdx, "hours", e.target.value)}
+                                              style={{ ...inputStyle, width: 55, fontSize: 11, padding: "4px 6px", textAlign: "center" }} />
+                                            <label style={{
+                                              padding: "4px 8px", borderRadius: 5, border: `1px solid ${C.border}`,
+                                              background: C.surface, color: C.textSecondary, cursor: "pointer", fontSize: 10, whiteSpace: "nowrap"
+                                            }}>
+                                              📄 Subir
+                                              <input type="file" accept=".pdf,.docx,.doc,.txt" onChange={(e) => raHandleFileUpload(e, realIdx)} style={{ display: "none" }} />
+                                            </label>
+                                          </div>
+                                        </div>
+                                        {orig.program ? (
+                                          <div style={{ fontSize: 10, color: C.green }}>✓ {orig.program.length} caracteres cargados</div>
+                                        ) : (
+                                          <textarea placeholder="Pegá el programa acá o subí un archivo..."
+                                            value={orig.program} onChange={e => raUpdateOriginSubject(realIdx, "program", e.target.value)}
+                                            style={{ ...inputStyle, fontSize: 11, minHeight: 40, resize: "vertical", width: "100%", lineHeight: 1.4 }} />
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
 
