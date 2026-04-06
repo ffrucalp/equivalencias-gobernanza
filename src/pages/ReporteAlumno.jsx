@@ -12,7 +12,7 @@ export default function ReporteAlumno() {
   const {
     apiKey, selectedModel, saveModel, analyses, setAnalyses,
     savedReports, setSavedReports, authSession, authProfile,
-    setShowApiKeyModal, setTab, error, setError
+    setShowApiKeyModal, setTab, error, setError, savedPlans
   } = useApp();
 
   // ── Restore draft from localStorage ──
@@ -53,6 +53,21 @@ export default function ReporteAlumno() {
 
   // ── Search filter for analyses ──
   const [searchFilter, setSearchFilter] = useState("");
+
+  // ── Origin mode: select from saved plan or manual input ──
+  const [originMode, setOriginMode] = useState("auto"); // "auto" | "manual"
+
+  // Find matching saved plans for the student's university/career
+  const matchingPlans = savedPlans.filter(p => {
+    if (!rStudentUni && !rStudentCareer) return false;
+    const uniMatch = !rStudentUni || (p.university || "").toLowerCase().includes(rStudentUni.toLowerCase());
+    const carMatch = !rStudentCareer || (p.career || "").toLowerCase().includes(rStudentCareer.toLowerCase());
+    return uniMatch && carMatch;
+  });
+  // Also show all plans as fallback
+  const allPlansAvailable = savedPlans.length > 0;
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
+  const selectedOriginPlan = savedPlans.find(p => p.id === selectedPlanId);
 
   // ── Auto-save draft (debounced) ──
   const saveTimerRef = useRef(null);
@@ -583,6 +598,125 @@ const saveReport = async () => {
               {/* Left: Materias de origen */}
               <div style={cardStyle}>
                 <SectionTitle icon="🏛" color={C.redAccent} label={`Materia${raOriginSubjects.length > 1 ? "s" : ""} de origen`} />
+
+                {/* ── Plan picker or manual mode toggle ── */}
+                {allPlansAvailable && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+                      <button onClick={() => setOriginMode("auto")} style={{
+                        flex: 1, padding: "8px 12px", borderRadius: 7, border: `1.5px solid ${originMode === "auto" ? C.red : C.border}`,
+                        background: originMode === "auto" ? C.redSoft : C.surface, color: originMode === "auto" ? C.redAccent : C.textSecondary,
+                        cursor: "pointer", fontSize: 12, fontWeight: originMode === "auto" ? 700 : 400
+                      }}>
+                        📋 Seleccionar de plan guardado
+                      </button>
+                      <button onClick={() => setOriginMode("manual")} style={{
+                        flex: 1, padding: "8px 12px", borderRadius: 7, border: `1.5px solid ${originMode === "manual" ? C.red : C.border}`,
+                        background: originMode === "manual" ? C.redSoft : C.surface, color: originMode === "manual" ? C.redAccent : C.textSecondary,
+                        cursor: "pointer", fontSize: 12, fontWeight: originMode === "manual" ? 700 : 400
+                      }}>
+                        ✏️ Ingreso manual
+                      </button>
+                    </div>
+
+                    {originMode === "auto" && (
+                      <div style={{ padding: 12, borderRadius: 8, background: C.bg, border: `1px solid ${C.borderLight}` }}>
+                        {/* Plan selector */}
+                        <select value={selectedPlanId || ""} onChange={e => setSelectedPlanId(e.target.value || null)}
+                          style={{ ...inputStyle, fontSize: 12, marginBottom: 8, cursor: "pointer", appearance: "auto" }}>
+                          <option value="">— Seleccionar plan de estudios —</option>
+                          {matchingPlans.length > 0 && (
+                            <optgroup label={`Coincidencias para ${rStudentUni || ""} ${rStudentCareer || ""}`}>
+                              {matchingPlans.map(p => (
+                                <option key={p.id} value={p.id}>★ {p.university} — {p.career} ({(p.subjects||[]).length} mat.)</option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {savedPlans.filter(p => !matchingPlans.includes(p)).length > 0 && (
+                            <optgroup label="Otros planes guardados">
+                              {savedPlans.filter(p => !matchingPlans.includes(p)).map(p => (
+                                <option key={p.id} value={p.id}>{p.university} — {p.career} ({(p.subjects||[]).length} mat.)</option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+
+                        {/* Subject checkboxes from selected plan */}
+                        {selectedOriginPlan && (
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: C.textSecondary }}>{(selectedOriginPlan.subjects||[]).length} materias disponibles</span>
+                              <div style={{ display: "flex", gap: 4 }}>
+                                <button onClick={() => {
+                                  const subs = (selectedOriginPlan.subjects||[]).map(s => ({ name: typeof s === "string" ? s : s.name, program: "", hours: "" }));
+                                  setRaOriginSubjects(subs);
+                                }} style={{ ...btnOutline, fontSize: 10, padding: "3px 8px" }}>Seleccionar todas</button>
+                                <button onClick={() => setRaOriginSubjects([{ name: "", program: "", hours: "" }])} style={{ ...btnOutline, fontSize: 10, padding: "3px 8px" }}>Ninguna</button>
+                              </div>
+                            </div>
+                            <div style={{ maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3 }}>
+                              {(selectedOriginPlan.subjects||[]).map((s, i) => {
+                                const subName = typeof s === "string" ? s : s.name;
+                                const isSelected = raOriginSubjects.some(o => o.name === subName);
+                                return (
+                                  <button key={i} onClick={() => {
+                                    if (isSelected) {
+                                      const updated = raOriginSubjects.filter(o => o.name !== subName);
+                                      setRaOriginSubjects(updated.length > 0 ? updated : [{ name: "", program: "", hours: "" }]);
+                                    } else {
+                                      const hasEmpty = raOriginSubjects.length === 1 && !raOriginSubjects[0].name.trim();
+                                      if (hasEmpty) {
+                                        setRaOriginSubjects([{ name: subName, program: "", hours: "" }]);
+                                      } else {
+                                        setRaOriginSubjects(prev => [...prev, { name: subName, program: "", hours: "" }]);
+                                      }
+                                    }
+                                  }} style={{
+                                    padding: "7px 10px", borderRadius: 6, cursor: "pointer", textAlign: "left", fontSize: 12,
+                                    border: `1.5px solid ${isSelected ? C.green : C.borderLight}`,
+                                    background: isSelected ? C.greenSoft : C.surface,
+                                    color: isSelected ? C.green : C.text,
+                                    fontWeight: isSelected ? 600 : 400,
+                                    display: "flex", alignItems: "center", gap: 6
+                                  }}>
+                                    <span style={{
+                                      width: 16, height: 16, borderRadius: 3, flexShrink: 0,
+                                      border: `2px solid ${isSelected ? C.green : C.border}`,
+                                      background: isSelected ? C.green : "transparent",
+                                      display: "flex", alignItems: "center", justifyContent: "center",
+                                      color: "#fff", fontSize: 10, fontWeight: 700
+                                    }}>{isSelected ? "✓" : ""}</span>
+                                    {subName}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {raOriginSubjects.filter(o => o.name.trim()).length > 0 && (
+                              <div style={{ marginTop: 8, fontSize: 11, color: C.green, fontWeight: 600 }}>
+                                ✓ {raOriginSubjects.filter(o => o.name.trim()).length} materia{raOriginSubjects.filter(o => o.name.trim()).length !== 1 ? "s" : ""} seleccionada{raOriginSubjects.filter(o => o.name.trim()).length !== 1 ? "s" : ""}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {!selectedOriginPlan && (
+                          <div style={{ textAlign: "center", padding: 12, fontSize: 12, color: C.textMuted }}>
+                            Seleccioná un plan para ver las materias.
+                            {matchingPlans.length === 0 && rStudentUni && (
+                              <div style={{ marginTop: 6 }}>
+                                No hay planes guardados para {rStudentUni}. <button onClick={() => setTab("plans")} style={{ color: C.red, background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontSize: 12, textDecoration: "underline" }}>Cargar uno →</button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Manual input section (always visible in manual mode, hidden in auto unless needed) ── */}
+                {(originMode === "manual" || !allPlansAvailable) && (
+                  <>
                 <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 12, lineHeight: 1.5, padding: "6px 10px", borderRadius: 6, background: C.blueSoft, border: `1px solid ${C.blueBorder}` }}>
                   💡 <b>Subí los programas de las materias</b> cursadas por el alumno (PDF, DOCX o TXT). Podés subir varios archivos a la vez con el botón "📄 Subir varios archivos". La carga horaria es <b>fundamental</b> para el análisis — completala si la conocés.
                 </div>
@@ -636,6 +770,8 @@ const saveReport = async () => {
                     <input type="file" accept=".pdf,.docx,.doc,.txt" multiple onChange={raHandleMultiFileUpload} style={{ display: "none" }} />
                   </label>
                 </div>
+                  </>
+                )}
               </div>
 
               {/* Right: Target + action */}
