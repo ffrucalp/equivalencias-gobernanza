@@ -276,6 +276,36 @@ export function AppProvider({ children }) {
     }
   };
 
+  const updateReport = async (id, updates) => {
+    // Update local state immediately
+    setSavedReports(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+    // Update Supabase via REST API
+    const sbUrl = import.meta.env.VITE_SUPABASE_URL || localStorage.getItem("eq-supabase-url");
+    const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY || localStorage.getItem("eq-supabase-key");
+    const token = authSession?.access_token;
+    if (!sbUrl || !sbKey) return;
+    try {
+      const dbUpdates = {};
+      if (updates.student_name !== undefined) dbUpdates.alumno_nombre = updates.student_name;
+      if (updates.student_dni !== undefined) dbUpdates.alumno_dni = updates.student_dni;
+      if (updates.origin_university !== undefined) dbUpdates.origin_university = updates.origin_university;
+      if (updates.origin_career !== undefined) dbUpdates.origin_career = updates.origin_career;
+      if (updates.estado !== undefined) dbUpdates.estado = updates.estado;
+      if (updates.notas_director !== undefined) dbUpdates.notas_director = updates.notas_director;
+      const resp = await fetch(`${sbUrl}/rest/v1/reportes_equivalencias?id=eq.${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "apikey": sbKey, "Authorization": `Bearer ${token || sbKey}`, "Prefer": "return=minimal" },
+        body: JSON.stringify(dbUpdates)
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        console.error("❌ Error actualizando reporte:", err.message || resp.status);
+      } else {
+        console.log("✓ Reporte actualizado:", id);
+      }
+    } catch (e) { console.error("❌ Error de red:", e.message); }
+  };
+
   const exportCSV = () => {
     if (!analyses.length) return;
     const rows = [["Fecha","Universidad","Carrera","Materia Origen","Materia UCALP","Clasificación","% Cobertura","Unidades reconocidas","Unidades a rendir","Modelo IA"]];
@@ -335,7 +365,7 @@ export function AppProvider({ children }) {
     // UI
     error, setError, showApiKeyModal, setShowApiKeyModal,
     // Functions
-    deleteAnalysis, clearAll, savePlan, deletePlan, deleteReport, exportCSV, dashboardStats,
+    deleteAnalysis, clearAll, savePlan, deletePlan, deleteReport, updateReport, exportCSV, dashboardStats,
     // Supabase
     getSupabaseClient,
   };

@@ -3,12 +3,108 @@ import { useApp } from "../context/AppContext";
 import { UCALP_PLAN, UCALP_ORDER, UCALP_PROGRAMS } from "../lib/constants";
 import { C, cardStyle, inputStyle, btnPrimary, btnOutline } from "../lib/styles";
 import { Badge, CoverageCircle, UnitDetail, AlertBox, InfoBox } from "../lib/components";
+import { saveData } from "../lib/utils";
 
 export default function Reportes() {
-  const { savedReports, deleteReport, setTab } = useApp();
+  const { savedReports, deleteReport, updateReport, setTab } = useApp();
   const [viewingReport, setViewingReport] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [editingReport, setEditingReport] = useState(null); // { id, student_name, student_dni, origin_university, origin_career }
 
   const loadReport = (report) => setViewingReport(report);
+
+  // ── Duplicate report: load into ReporteAlumno as draft ──
+  const duplicateReport = (report) => {
+    saveData("eq-reporte-draft", {
+      name: report.student_name || "",
+      dni: report.student_dni || "",
+      uni: report.origin_university || "",
+      career: report.origin_career || "",
+      step: "reporte",
+      origins: [],
+      targets: [],
+      analyses: report.analyses || []
+    });
+    setTab("reporte_alumno");
+  };
+
+  // ── Export to PDF ──
+  const exportPdf = async () => {
+    const el = document.getElementById("report-viewer-content");
+    if (!el) return;
+    setExportingPdf(true);
+    try {
+      // Load html2canvas
+      if (!window.html2canvas) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+          s.onload = resolve; s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
+      // Load jsPDF
+      if (!window.jspdf) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+          s.onload = resolve; s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
+      const canvas = await window.html2canvas(el, { scale: 2, backgroundColor: "#fff", useCORS: true });
+      const imgData = canvas.toDataURL("image/png");
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 8;
+      const imgW = pageW - margin * 2;
+      const imgH = (canvas.height * imgW) / canvas.width;
+
+      // If content is taller than one page, split into pages
+      let y = margin;
+      let remaining = imgH;
+      const pageContentH = pageH - margin * 2;
+
+      while (remaining > 0) {
+        if (y > margin) pdf.addPage();
+        const sourceY = (imgH - remaining) * (canvas.height / imgH);
+        const sliceH = Math.min(remaining, pageContentH);
+        const sourceSliceH = sliceH * (canvas.height / imgH);
+
+        // Create a canvas slice
+        const sliceCanvas = document.createElement("canvas");
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = sourceSliceH;
+        const ctx = sliceCanvas.getContext("2d");
+        ctx.drawImage(canvas, 0, sourceY, canvas.width, sourceSliceH, 0, 0, canvas.width, sourceSliceH);
+
+        pdf.addImage(sliceCanvas.toDataURL("image/png"), "PNG", margin, margin, imgW, sliceH);
+        remaining -= pageContentH;
+        y = margin;
+      }
+
+      const rpt = viewingReport;
+      pdf.save(`Reporte-${rpt.student_name?.replace(/\s+/g, "-") || "alumno"}-${new Date().toISOString().slice(0,10)}.pdf`);
+    } catch (e) {
+      console.error("Error exportando PDF:", e);
+      alert("Error exportando PDF: " + e.message);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  // ── Filter reports ──
+  const filteredReports = savedReports.filter(r => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (r.student_name || "").toLowerCase().includes(q) ||
+           (r.student_dni || "").toLowerCase().includes(q) ||
+           (r.origin_university || "").toLowerCase().includes(q) ||
+           (r.origin_career || "").toLowerCase().includes(q);
+  });
 
   return (
     <>
@@ -23,7 +119,20 @@ export default function Reportes() {
           </button>
         </div>
 
-        {savedReports.length === 0 ? (
+        {/* Search bar */}
+        {savedReports.length > 0 && (
+          <input
+            type="text" placeholder="🔍 Buscar por nombre, DNI, universidad o carrera..."
+            value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+            style={{ ...inputStyle, marginBottom: 16, fontSize: 13 }}
+          />
+        )}
+
+        {filteredReports.length === 0 && savedReports.length > 0 ? (
+          <div style={{ ...cardStyle, textAlign: "center", padding: 36 }}>
+            <div style={{ fontSize: 14, color: C.textSecondary }}>No hay reportes que coincidan con "{searchQuery}"</div>
+          </div>
+        ) : savedReports.length === 0 ? (
           <div style={{ ...cardStyle, textAlign: "center", padding: 48 }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
             <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 6 }}>No hay reportes guardados</div>
@@ -32,7 +141,7 @@ export default function Reportes() {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {savedReports.map(report => {
+            {filteredReports.map(report => {
               const summary = report.summary || {};
               const analyses = report.analyses || [];
               return (
@@ -51,13 +160,22 @@ export default function Reportes() {
                         <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: C.amberSoft, color: C.amber, fontWeight: 700 }}>△ {summary.parcial || 0}</span>
                         <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: C.dangerSoft, color: C.redAccent, fontWeight: 700 }}>✗ {summary.sin || 0}</span>
                         <span style={{ fontSize: 10, color: C.textMuted, marginLeft: 4 }}>
-                          {analyses.length} {analyses.length === 1 ? "análisis" : "análisis"} · {new Date(report.created_at).toLocaleDateString("es-AR", { year: "numeric", month: "short", day: "numeric" })}
+                          {analyses.length} análisis · {new Date(report.created_at).toLocaleDateString("es-AR", { year: "numeric", month: "short", day: "numeric" })}
                         </span>
                       </div>
                     </div>
-                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
                       <button onClick={() => loadReport(report)} style={{ ...btnPrimary, padding: "8px 16px", fontSize: 12 }}>
-                        👁 Ver reporte
+                        👁 Ver
+                      </button>
+                      <button onClick={() => setEditingReport({
+                        id: report.id, student_name: report.student_name || "", student_dni: report.student_dni || "",
+                        origin_university: report.origin_university || "", origin_career: report.origin_career || ""
+                      })} style={{ ...btnOutline, padding: "8px 12px", fontSize: 12 }} title="Editar datos del alumno">
+                        ✏️ Editar
+                      </button>
+                      <button onClick={() => duplicateReport(report)} style={{ ...btnOutline, padding: "8px 12px", fontSize: 12, borderColor: "#c7d2fe", color: "#6366f1" }} title="Duplicar para editar">
+                        📋 Duplicar
                       </button>
                       <button onClick={() => deleteReport(report.id)} style={{ ...btnOutline, padding: "8px 12px", fontSize: 12, borderColor: C.redBorder, color: C.redAccent }}>
                         🗑
@@ -87,6 +205,9 @@ export default function Reportes() {
             <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.borderLight}`, display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: C.surface, zIndex: 10 }}>
               <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Reporte: {rpt.student_name}</span>
               <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={exportPdf} disabled={exportingPdf} style={{ ...btnPrimary, padding: "7px 14px", fontSize: 12, background: "#E53935", opacity: exportingPdf ? 0.6 : 1 }}>
+                  {exportingPdf ? "⚙️ Generando..." : "📄 PDF"}
+                </button>
                 <button onClick={() => {
                   const w = window.open("", "_blank");
                   const el = document.getElementById("report-viewer-content");
@@ -97,7 +218,16 @@ export default function Reportes() {
 </head><body>${el.outerHTML}<script>setTimeout(()=>{window.print();window.close()},500)<\/script></body></html>`);
                     w.document.close();
                   }
-                }} style={{ ...btnPrimary, padding: "7px 14px", fontSize: 12 }}>🖨 Imprimir</button>
+                }} style={{ ...btnOutline, padding: "7px 14px", fontSize: 12 }}>🖨 Imprimir</button>
+                <button onClick={() => { duplicateReport(rpt); setViewingReport(null); }} style={{ ...btnOutline, padding: "7px 14px", fontSize: 12, borderColor: "#c7d2fe", color: "#6366f1" }}>
+                  📋 Duplicar
+                </button>
+                <button onClick={() => { setEditingReport({
+                  id: rpt.id, student_name: rpt.student_name || "", student_dni: rpt.student_dni || "",
+                  origin_university: rpt.origin_university || "", origin_career: rpt.origin_career || ""
+                }); }} style={{ ...btnOutline, padding: "7px 14px", fontSize: 12 }}>
+                  ✏️ Editar datos
+                </button>
                 <button onClick={() => setViewingReport(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: C.textMuted, padding: "4px 8px" }}>✕</button>
               </div>
             </div>
@@ -190,6 +320,59 @@ export default function Reportes() {
         </div>
       );
     })()}
+
+    {/* ═══════ EDIT MODAL ═══════ */}
+    {editingReport && (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1001, padding: 20 }}
+        onClick={() => setEditingReport(null)}>
+        <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`, maxWidth: 480, width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,0.2)", padding: 28 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>✏️ Editar datos del reporte</h3>
+            <button onClick={() => setEditingReport(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: C.textMuted }}>✕</button>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.textSecondary, marginBottom: 4 }}>Nombre del alumno</div>
+              <input value={editingReport.student_name} onChange={e => setEditingReport(prev => ({ ...prev, student_name: e.target.value }))}
+                style={{ ...inputStyle, fontSize: 14 }} placeholder="Nombre completo" autoFocus />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.textSecondary, marginBottom: 4 }}>DNI</div>
+              <input value={editingReport.student_dni} onChange={e => setEditingReport(prev => ({ ...prev, student_dni: e.target.value }))}
+                style={inputStyle} placeholder="DNI" />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.textSecondary, marginBottom: 4 }}>Universidad de origen</div>
+              <input value={editingReport.origin_university} onChange={e => setEditingReport(prev => ({ ...prev, origin_university: e.target.value }))}
+                style={inputStyle} placeholder="Universidad" />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.textSecondary, marginBottom: 4 }}>Carrera de origen</div>
+              <input value={editingReport.origin_career} onChange={e => setEditingReport(prev => ({ ...prev, origin_career: e.target.value }))}
+                style={inputStyle} placeholder="Carrera" />
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 20 }}>
+            <button onClick={() => setEditingReport(null)} style={btnOutline}>Cancelar</button>
+            <button onClick={() => {
+              updateReport(editingReport.id, {
+                student_name: editingReport.student_name,
+                student_dni: editingReport.student_dni,
+                origin_university: editingReport.origin_university,
+                origin_career: editingReport.origin_career
+              });
+              // Also update viewingReport if it's the same one
+              if (viewingReport?.id === editingReport.id) {
+                setViewingReport(prev => ({ ...prev, ...editingReport }));
+              }
+              setEditingReport(null);
+            }} style={{ ...btnPrimary, padding: "10px 24px" }}>💾 Guardar cambios</button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }

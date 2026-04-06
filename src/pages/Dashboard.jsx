@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useApp } from "../context/AppContext";
 import { Badge, CoverageCircle, UnitDetail, AlertBox, InfoBox } from "../lib/components";
-import { C, btnPrimary, btnOutline } from "../lib/styles";
+import { C, cardStyle, inputStyle, selectStyle, btnPrimary, btnOutline } from "../lib/styles";
 
 export default function Dashboard() {
   const {
@@ -10,19 +10,91 @@ export default function Dashboard() {
   } = useApp();
 
   const [expandedAnalysis, setExpandedAnalysis] = useState(null);
+  const [filterUni, setFilterUni] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+
+  // ── Get unique universities ──
+  const universities = useMemo(() => {
+    const unis = new Set();
+    savedReports.forEach(r => { if (r.origin_university) unis.add(r.origin_university); });
+    savedTablas.forEach(t => { if (t.origin_university) unis.add(t.origin_university); });
+    return [...unis].sort();
+  }, [savedReports, savedTablas]);
+
+  // ── Filtered data ──
+  const hasFilters = filterUni || filterDateFrom || filterDateTo;
+
+  const matchesFilters = (uni, date) => {
+    if (filterUni && uni !== filterUni) return false;
+    if (filterDateFrom && date && new Date(date) < new Date(filterDateFrom)) return false;
+    if (filterDateTo && date && new Date(date) > new Date(filterDateTo + "T23:59:59")) return false;
+    return true;
+  };
+
+  const filteredReports = savedReports.filter(r => matchesFilters(r.origin_university, r.created_at));
+  const filteredTablas = savedTablas.filter(t => matchesFilters(t.origin_university, t.updated_at));
+
+  // ── Filtered stats ──
+  const filteredStats = useMemo(() => {
+    if (!hasFilters) return dashboardStats;
+    let total = 0, parcial = 0, sin = 0;
+    const unis = new Set();
+    filteredReports.forEach(r => {
+      total += (r.summary?.total || 0); parcial += (r.summary?.parcial || 0); sin += (r.summary?.sin || 0);
+      if (r.origin_university) unis.add(r.origin_university);
+    });
+    filteredTablas.forEach(t => {
+      if (t.colors && typeof t.colors === "object") {
+        Object.values(t.colors).forEach(v => { if (v === "TOTAL") total++; else if (v === "PARCIAL") parcial++; else if (v === "SIN_EQUIVALENCIA") sin++; });
+      }
+      if (t.origin_university) unis.add(t.origin_university);
+    });
+    return { reportes: filteredReports.length, tablas: filteredTablas.length, total, parcial, sin, universities: unis.size, planes: dashboardStats.planes };
+  }, [hasFilters, filteredReports, filteredTablas, dashboardStats]);
+
+  const stats = hasFilters ? filteredStats : dashboardStats;
 
   return (
     <div style={{ animation: "fadeIn 0.3s ease" }}>
+      {/* ── Filtros ── */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center", padding: "12px 16px", borderRadius: 10, background: C.bg, border: `1px solid ${C.borderLight}` }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: C.textSecondary, flexShrink: 0 }}>🔍 Filtros:</span>
+        <select value={filterUni} onChange={e => setFilterUni(e.target.value)} style={{ ...selectStyle, flex: "1 1 200px", fontSize: 12, padding: "7px 10px" }}>
+          <option value="">Todas las universidades</option>
+          {universities.map(u => <option key={u} value={u}>{u}</option>)}
+        </select>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ fontSize: 11, color: C.textMuted }}>Desde:</span>
+          <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} style={{ ...inputStyle, width: 140, fontSize: 11, padding: "6px 8px" }} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ fontSize: 11, color: C.textMuted }}>Hasta:</span>
+          <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} style={{ ...inputStyle, width: 140, fontSize: 11, padding: "6px 8px" }} />
+        </div>
+        {hasFilters && (
+          <button onClick={() => { setFilterUni(""); setFilterDateFrom(""); setFilterDateTo(""); }} style={{ ...btnOutline, fontSize: 11, padding: "5px 10px" }}>
+            ✕ Limpiar
+          </button>
+        )}
+      </div>
+
+      {hasFilters && (
+        <div style={{ marginBottom: 16, fontSize: 12, color: C.textSecondary, fontStyle: "italic" }}>
+          Mostrando resultados filtrados{filterUni ? ` de ${filterUni}` : ""}{filterDateFrom ? ` desde ${new Date(filterDateFrom).toLocaleDateString("es-AR")}` : ""}{filterDateTo ? ` hasta ${new Date(filterDateTo).toLocaleDateString("es-AR")}` : ""}
+        </div>
+      )}
+
       {/* ── Tarjetas de estadísticas ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14, marginBottom: 32 }}>
         {[
-          { label: "Reportes", value: dashboardStats.reportes, color: C.red, bg: C.redSoft, border: C.redBorder },
-          { label: "Tablas Prov.", value: dashboardStats.tablas, color: "#6366f1", bg: "#eef2ff", border: "#c7d2fe" },
-          { label: "Equiv. Totales", value: dashboardStats.total, color: C.green, bg: C.greenSoft, border: C.greenBorder },
-          { label: "Equiv. Parciales", value: dashboardStats.parcial, color: C.amber, bg: C.amberSoft, border: C.amberBorder },
-          { label: "Sin Equivalencia", value: dashboardStats.sin, color: C.redAccent, bg: C.dangerSoft, border: C.dangerBorder },
-          { label: "Universidades", value: dashboardStats.universities, color: C.red, bg: C.redSoft, border: C.redBorder },
-          { label: "Planes", value: dashboardStats.planes, color: "#0891b2", bg: "#ecfeff", border: "#a5f3fc" },
+          { label: "Reportes", value: stats.reportes, color: C.red, bg: C.redSoft, border: C.redBorder },
+          { label: "Tablas Prov.", value: stats.tablas, color: "#6366f1", bg: "#eef2ff", border: "#c7d2fe" },
+          { label: "Equiv. Totales", value: stats.total, color: C.green, bg: C.greenSoft, border: C.greenBorder },
+          { label: "Equiv. Parciales", value: stats.parcial, color: C.amber, bg: C.amberSoft, border: C.amberBorder },
+          { label: "Sin Equivalencia", value: stats.sin, color: C.redAccent, bg: C.dangerSoft, border: C.dangerBorder },
+          { label: "Universidades", value: stats.universities, color: C.red, bg: C.redSoft, border: C.redBorder },
+          { label: "Planes", value: stats.planes, color: "#0891b2", bg: "#ecfeff", border: "#a5f3fc" },
         ].map((s, i) => (
           <div key={i} style={{ background: s.bg, borderRadius: 12, padding: "18px 16px", border: `1px solid ${s.border}` }}>
             <div style={{ fontSize: 30, fontWeight: 700, color: s.color, fontFamily: "'Outfit', sans-serif" }}>{s.value}</div>
@@ -37,15 +109,19 @@ export default function Dashboard() {
         <button onClick={() => setTab("reporte_alumno")} style={{ ...btnPrimary, padding: "7px 14px", fontSize: 12 }}>+ Nuevo reporte</button>
       </div>
 
-      {savedReports.length === 0 ? (
+      {filteredReports.length === 0 && !hasFilters ? (
         <div style={{ background: C.surface, borderRadius: 12, padding: 36, textAlign: "center", border: `1px dashed ${C.border}`, marginBottom: 28 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>📭</div>
           <div style={{ fontSize: 14, color: C.textSecondary, marginBottom: 14 }}>No hay reportes de alumnos guardados.</div>
           <button onClick={() => setTab("reporte_alumno")} style={{ ...btnOutline, fontSize: 12 }}>📄 Ir a Reporte Alumno</button>
         </div>
+      ) : filteredReports.length === 0 && hasFilters ? (
+        <div style={{ background: C.bg, borderRadius: 10, padding: "16px", textAlign: "center", fontSize: 13, color: C.textMuted, marginBottom: 28 }}>
+          No hay reportes que coincidan con los filtros aplicados.
+        </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28 }}>
-          {savedReports.slice(0, 10).map(report => {
+          {filteredReports.slice(0, 10).map(report => {
             const s = report.summary || {};
             return (
               <div key={report.id} onClick={() => setTab("reportes")} style={{
@@ -69,9 +145,9 @@ export default function Dashboard() {
               </div>
             );
           })}
-          {savedReports.length > 10 && (
+          {filteredReports.length > 10 && (
             <button onClick={() => setTab("reportes")} style={{ ...btnOutline, alignSelf: "center", fontSize: 12, marginTop: 4 }}>
-              Ver todos ({savedReports.length}) →
+              Ver todos ({filteredReports.length}) →
             </button>
           )}
         </div>
@@ -83,7 +159,7 @@ export default function Dashboard() {
         <button onClick={() => setTab("tabla")} style={{ ...btnOutline, padding: "7px 14px", fontSize: 12 }}>Ir a Tablas →</button>
       </div>
 
-      {savedTablas.length === 0 && savedPlans.length === 0 ? (
+      {filteredTablas.length === 0 && savedPlans.length === 0 && !hasFilters ? (
         <div style={{ background: C.surface, borderRadius: 12, padding: 36, textAlign: "center", border: `1px dashed ${C.border}`, marginBottom: 28 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>📊</div>
           <div style={{ fontSize: 14, color: C.textSecondary, marginBottom: 14 }}>No hay tablas provisionales ni planes cargados.</div>
@@ -91,7 +167,7 @@ export default function Dashboard() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28 }}>
-          {savedTablas.map(tabla => {
+          {filteredTablas.map(tabla => {
             const colors = tabla.colors || {};
             const vals = Object.values(colors);
             const tT = vals.filter(v => v === "TOTAL").length;
@@ -120,7 +196,7 @@ export default function Dashboard() {
               </div>
             );
           })}
-          {savedTablas.length === 0 && savedPlans.length > 0 && (
+          {filteredTablas.length === 0 && savedPlans.length > 0 && !hasFilters && (
             <div style={{ background: C.bg, borderRadius: 10, padding: "12px 16px", fontSize: 13, color: C.textSecondary }}>
               Hay {savedPlans.length} plan{savedPlans.length > 1 ? "es" : ""} cargado{savedPlans.length > 1 ? "s" : ""} pero sin tabla provisoria generada aún. <span onClick={() => setTab("tabla")} style={{ color: C.red, cursor: "pointer", fontWeight: 600 }}>Ir a Tablas →</span>
             </div>
@@ -182,7 +258,7 @@ export default function Dashboard() {
       )}
 
       {/* ── Estado vacío general ── */}
-      {savedReports.length === 0 && savedTablas.length === 0 && analyses.length === 0 && savedPlans.length === 0 && (
+      {filteredReports.length === 0 && filteredTablas.length === 0 && analyses.length === 0 && savedPlans.length === 0 && !hasFilters && (
         <div style={{ background: C.surface, borderRadius: 16, padding: 56, textAlign: "center", border: `2px dashed ${C.redBorder}`, marginTop: 8 }}>
           <div style={{ fontSize: 48, marginBottom: 14 }}>📝</div>
           <div style={{ fontSize: 18, color: C.text, marginBottom: 6, fontFamily: "'Outfit', sans-serif", fontWeight: 600 }}>Bienvenido al sistema de equivalencias</div>
