@@ -10,7 +10,7 @@ import { isGoogleDriveConfigured, pickFileFromDrive } from "../lib/googleDrive";
 export default function Planes() {
   const {
     apiKey, selectedModel, savedPlans, savePlan, deletePlan,
-    error, setError, setShowApiKeyModal, setTab
+    error, setError, setShowApiKeyModal, setTab, ucalpCarreras
   } = useApp();
 
   const [originUniversity, setOriginUniversity] = useState("");
@@ -20,6 +20,7 @@ export default function Planes() {
   const [scrapeUrl, setScrapeUrl] = useState("");
   const [scraping, setScraping] = useState(false);
   const [scrapedPlan, setScrapedPlan] = useState(null);
+  const [ucalpSearch, setUcalpSearch] = useState("");
   const [sheetsUrl, setSheetsUrl] = useState("");
   const [sheetsData, setSheetsData] = useState(null);
   const [sheetsLoading, setSheetsLoading] = useState(false);
@@ -365,6 +366,52 @@ const handleGoogleDrivePick = async () => {
                       ))}
                     </div>
                     {plan.url && <div style={{ marginTop: 10, fontSize: 11, color: C.textMuted }}>Fuente: <a href={plan.url} target="_blank" rel="noopener" style={{ color: C.blue }}>{plan.url}</a></div>}
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── UCALP Plans Browser ── */}
+        {ucalpCarreras.length > 0 && (
+          <div style={{ marginTop: 28 }}>
+            <h3 style={{ fontFamily: "'Outfit', sans-serif", fontSize: 18, color: C.text, marginBottom: 6, fontWeight: 700 }}>
+              🏛 Planes de estudio UCALP ({ucalpCarreras.length} carreras)
+            </h3>
+            <p style={{ fontSize: 12, color: C.textSecondary, marginBottom: 12 }}>
+              Base de datos completa de la UCALP. Hacé click en una carrera para ver las materias, o guardala como plan.
+            </p>
+            <input
+              type="text" placeholder="🔍 Buscar carrera o facultad UCALP..."
+              value={ucalpSearch} onChange={e => setUcalpSearch(e.target.value)}
+              style={{ ...inputStyle, fontSize: 13, marginBottom: 12 }}
+            />
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {ucalpCarreras
+                .filter(c => !ucalpSearch || c.nombre.toLowerCase().includes(ucalpSearch.toLowerCase()) || (c.facultad||"").toLowerCase().includes(ucalpSearch.toLowerCase()))
+                .map(c => (
+                <details key={c.id} style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+                  <summary style={{ padding: "12px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: C.blue }}>{c.nombre}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                        {c.facultad || "UCALP"} · {c.duracion || "?"} · {c.modalidad || "?"} · {c.subjects?.length || 0} materias
+                      </div>
+                    </div>
+                    <button onClick={(e) => {
+                      e.preventDefault(); e.stopPropagation();
+                      savePlan("Universidad Católica de La Plata", c.nombre, (c.subjects || []).map(s => ({ name: s.name, details: s.duracion || "" })), "");
+                    }} style={{ ...btnOutline, fontSize: 11, padding: "5px 10px", borderColor: C.greenBorder, color: C.green, flexShrink: 0 }}>
+                      💾 Guardar como plan
+                    </button>
+                  </summary>
+                  <div style={{ padding: "0 16px 14px", display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {(c.subjects || []).map((s, i) => (
+                      <div key={i} style={{ padding: "5px 10px", borderRadius: 6, background: C.bg, border: `1px solid ${C.borderLight}`, fontSize: 11, color: C.text }}>
+                        {s.name} <span style={{ color: C.textMuted, fontSize: 10 }}>({s.duracion || "?"} · {s.anio || "?"})</span>
+                      </div>
+                    ))}
                   </div>
                 </details>
               ))}

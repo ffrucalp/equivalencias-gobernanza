@@ -56,6 +56,7 @@ export function AppProvider({ children }) {
   const [savedPlans, setSavedPlans] = useState([]);
   const [savedReports, setSavedReports] = useState([]);
   const [savedTablas, setSavedTablas] = useState([]);
+  const [ucalpCarreras, setUcalpCarreras] = useState([]);
   const [tablaCache, setTablaCache] = useState({});
   const [programAttachments, setProgramAttachments] = useState({});
   const [loading, setLoading] = useState(true);
@@ -145,6 +146,26 @@ export function AppProvider({ children }) {
       } catch (e) { console.error("Error loading tablas:", e); }
     };
 
+    const loadUcalpCarreras = async (sb) => {
+      try {
+        const { data } = await sb.from("ucalp_carreras").select("id,nombre,slug,facultad,duracion,modalidad,titulo_otorgado,materias");
+        if (data) {
+          setUcalpCarreras(data.map(c => ({
+            ...c,
+            // Flatten subjects from the JSONB anios structure
+            subjects: (c.materias || []).flatMap(a =>
+              (a.materias || []).map(m => ({
+                name: m.nombre,
+                duracion: m.duracion,
+                anio: a.anio_label || ""
+              }))
+            )
+          })));
+          console.log(`📚 UCALP: ${data.length} carreras cargadas`);
+        }
+      } catch (e) { console.error("Error loading UCALP carreras:", e); }
+    };
+
     const initAuth = async () => {
       const sb = getSupabaseClient();
       if (!sb) { setAuthLoading(false); return; }
@@ -158,6 +179,7 @@ export function AppProvider({ children }) {
         await loadProgramAttachments(sb);
         await loadSavedReports(sb);
         await loadSavedTablas(sb);
+        await loadUcalpCarreras(sb);
         initSIUCache(getSupabaseClient).then(cache => {
           if (cache) console.log(`SIU cache listo: ${cache.universidades.length} universidades, ${cache.carreras.length} carreras`);
         });
@@ -175,6 +197,7 @@ export function AppProvider({ children }) {
           await loadPlansFromSupabase(sb);
           await loadProgramAttachments(sb);
           await loadSavedReports(sb);
+          await loadUcalpCarreras(sb);
         } else {
           setAuthProfile(null);
         }
@@ -358,7 +381,7 @@ export function AppProvider({ children }) {
     showProfileMenu, setShowProfileMenu,
     // Data
     analyses, setAnalyses, savedPlans, setSavedPlans, savedReports, setSavedReports,
-    savedTablas, setSavedTablas, tablaCache, setTablaCache,
+    savedTablas, setSavedTablas, tablaCache, setTablaCache, ucalpCarreras,
     tablaSelectedPlanId, setTablaSelectedPlanId,
     programAttachments, setProgramAttachments,
     loading,

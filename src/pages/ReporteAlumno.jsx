@@ -12,7 +12,7 @@ export default function ReporteAlumno() {
   const {
     apiKey, selectedModel, saveModel, analyses, setAnalyses,
     savedReports, setSavedReports, authSession, authProfile,
-    setShowApiKeyModal, setTab, error, setError, savedPlans
+    setShowApiKeyModal, setTab, error, setError, savedPlans, ucalpCarreras
   } = useApp();
 
   // ── Restore draft from localStorage ──
@@ -181,10 +181,26 @@ export default function ReporteAlumno() {
     const carMatch = !rStudentCareer || (p.career || "").toLowerCase().includes(rStudentCareer.toLowerCase());
     return uniMatch && carMatch;
   });
-  // Also show all plans as fallback
-  const allPlansAvailable = savedPlans.length > 0;
+
+  // Find matching UCALP carreras
+  const isUcalpOrigin = rStudentUni && (rStudentUni.toLowerCase().includes("católica de la plata") || rStudentUni.toLowerCase().includes("ucalp"));
+  const matchingUcalp = ucalpCarreras.filter(c => {
+    if (!rStudentCareer) return true; // Show all if no career filter
+    return c.nombre.toLowerCase().includes(rStudentCareer.toLowerCase()) ||
+           rStudentCareer.toLowerCase().includes(c.nombre.toLowerCase());
+  });
+
+  const allPlansAvailable = savedPlans.length > 0 || ucalpCarreras.length > 0;
   const [selectedPlanId, setSelectedPlanId] = useState(null);
-  const selectedOriginPlan = savedPlans.find(p => p.id === selectedPlanId);
+  const [selectedPlanSource, setSelectedPlanSource] = useState(null); // "saved" | "ucalp"
+
+  // Resolve selected plan from either source
+  const selectedOriginPlan = selectedPlanSource === "ucalp"
+    ? (() => {
+        const c = ucalpCarreras.find(c => String(c.id) === String(selectedPlanId));
+        return c ? { id: `ucalp_${c.id}`, university: "Universidad Católica de La Plata", career: c.nombre, subjects: c.subjects } : null;
+      })()
+    : savedPlans.find(p => p.id === selectedPlanId) || null;
 
   // ── Auto-save draft (debounced) ──
   const saveTimerRef = useRef(null);
@@ -739,7 +755,16 @@ const saveReport = async () => {
                     {originMode === "auto" && (
                       <div style={{ padding: 12, borderRadius: 8, background: C.bg, border: `1px solid ${C.borderLight}` }}>
                         {/* Plan selector */}
-                        <select value={selectedPlanId || ""} onChange={e => setSelectedPlanId(e.target.value || null)}
+                        <select value={selectedPlanId || ""} onChange={e => {
+                          const val = e.target.value;
+                          if (val.startsWith("ucalp_")) {
+                            setSelectedPlanId(val.replace("ucalp_", ""));
+                            setSelectedPlanSource("ucalp");
+                          } else {
+                            setSelectedPlanId(val || null);
+                            setSelectedPlanSource("saved");
+                          }
+                        }}
                           style={{ ...inputStyle, fontSize: 12, marginBottom: 8, cursor: "pointer", appearance: "auto" }}>
                           <option value="">— Seleccionar plan de estudios —</option>
                           {matchingPlans.length > 0 && (
@@ -749,10 +774,24 @@ const saveReport = async () => {
                               ))}
                             </optgroup>
                           )}
+                          {isUcalpOrigin && matchingUcalp.length > 0 && (
+                            <optgroup label="🏛 Planes UCALP (base de datos)">
+                              {matchingUcalp.slice(0, 15).map(c => (
+                                <option key={`ucalp_${c.id}`} value={`ucalp_${c.id}`}>🏛 {c.nombre} — {c.facultad || "UCALP"} ({c.subjects?.length || 0} mat.)</option>
+                              ))}
+                            </optgroup>
+                          )}
                           {savedPlans.filter(p => !matchingPlans.includes(p)).length > 0 && (
                             <optgroup label="Otros planes guardados">
                               {savedPlans.filter(p => !matchingPlans.includes(p)).map(p => (
                                 <option key={p.id} value={p.id}>{p.university} — {p.career} ({(p.subjects||[]).length} mat.)</option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {!isUcalpOrigin && ucalpCarreras.length > 0 && (
+                            <optgroup label="🏛 Todos los planes UCALP">
+                              {ucalpCarreras.map(c => (
+                                <option key={`ucalp_${c.id}`} value={`ucalp_${c.id}`}>🏛 {c.nombre} — {c.facultad || "UCALP"} ({c.subjects?.length || 0} mat.)</option>
                               ))}
                             </optgroup>
                           )}
