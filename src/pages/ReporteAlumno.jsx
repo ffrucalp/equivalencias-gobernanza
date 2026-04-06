@@ -53,6 +53,123 @@ export default function ReporteAlumno() {
 
   // ── Search filter for analyses ──
   const [searchFilter, setSearchFilter] = useState("");
+  const [sharingState, setSharingState] = useState(null); // "png" | "pdf" | "email" | "whatsapp" | "drive" | null
+  const reportContentRef = useRef(null);
+
+  // ── Report to canvas helper ──
+  const reportToCanvas = async () => {
+    if (!reportContentRef.current) throw new Error("No hay reporte para exportar");
+    if (!window.html2canvas) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+        s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
+      });
+    }
+    return window.html2canvas(reportContentRef.current, { scale: 2, backgroundColor: "#fff", useCORS: true });
+  };
+
+  // ── Export PNG ──
+  const exportReportPNG = async () => {
+    setSharingState("png");
+    try {
+      const canvas = await reportToCanvas();
+      const link = document.createElement("a");
+      link.download = `Reporte-${rStudentName.replace(/\s+/g, "-")}-${new Date().toISOString().slice(0,10)}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch (e) { alert("Error: " + e.message); }
+    finally { setSharingState(null); }
+  };
+
+  // ── Export PDF ──
+  const exportReportPDF = async () => {
+    setSharingState("pdf");
+    try {
+      const canvas = await reportToCanvas();
+      if (!window.jspdf) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+          s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
+        });
+      }
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
+      const margin = 8, imgW = pageW - margin * 2;
+      const imgH = (canvas.height * imgW) / canvas.width;
+      const pageContentH = pageH - margin * 2;
+      const totalPages = Math.ceil(imgH / pageContentH);
+      for (let page = 0; page < totalPages; page++) {
+        if (page > 0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL("image/png"), "PNG", margin, margin - (page * pageContentH), imgW, imgH);
+      }
+      pdf.save(`Reporte-${rStudentName.replace(/\s+/g, "-")}-${new Date().toISOString().slice(0,10)}.pdf`);
+    } catch (e) { alert("Error: " + e.message); }
+    finally { setSharingState(null); }
+  };
+
+  // ── Share WhatsApp ──
+  const shareReportWhatsApp = async () => {
+    setSharingState("whatsapp");
+    try {
+      const canvas = await reportToCanvas();
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+      const file = new File([blob], `Reporte-${rStudentName.replace(/\s+/g, "-")}.png`, { type: "image/png" });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: `Reporte de Equivalencias — ${rStudentName}`, text: `Reporte de equivalencias de ${rStudentName} — Lic. en Gobernanza de Datos — UCALP` });
+      } else {
+        const link = document.createElement("a"); link.download = file.name; link.href = canvas.toDataURL("image/png"); link.click();
+        window.open(`https://wa.me/?text=${encodeURIComponent(`Reporte de equivalencias de ${rStudentName} — Lic. en Gobernanza de Datos — UCALP`)}`, "_blank");
+      }
+    } catch (e) { if (e.name !== "AbortError") alert("Error: " + e.message); }
+    finally { setSharingState(null); }
+  };
+
+  // ── Send by Gmail ──
+  const [reportEmailTo, setReportEmailTo] = useState("");
+  const [reportEmailSending, setReportEmailSending] = useState(false);
+  const sendReportByEmail = async (email) => {
+    if (!email || !reportContentRef.current) return;
+    setReportEmailSending(true);
+    try {
+      const canvas = await reportToCanvas();
+      const pngBase64 = canvas.toDataURL("image/png").split(",")[1];
+      const boundary = "boundary_" + Date.now();
+      const subject = `Reporte de Equivalencias — ${rStudentName} — UCALP`;
+      const htmlBody = `<p>Estimado/a,</p><p>Adjunto el reporte de equivalencias de ${rStudentName} para la Licenciatura en Gobernanza de Datos (UCALP).</p><p>Saludos cordiales,<br/>Dir. Francisco Fernández Ruiz</p>`;
+      const mimeEmail = [
+        `To: ${email}`, `Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=`,
+        `MIME-Version: 1.0`, `Content-Type: multipart/mixed; boundary="${boundary}"`, ``,
+        `--${boundary}`, `Content-Type: text/html; charset=UTF-8`, ``, htmlBody,
+        `--${boundary}`, `Content-Type: image/png; name="reporte-equivalencias.png"`,
+        `Content-Disposition: attachment; filename="reporte-equivalencias.png"`,
+        `Content-Transfer-Encoding: base64`, ``, pngBase64.match(/.{1,76}/g).join("\n"),
+        `--${boundary}--`
+      ].join("\r\n");
+      const raw = btoa(unescape(encodeURIComponent(mimeEmail))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      await new Promise((resolve, reject) => {
+        if (!document.getElementById("google-gis-script")) {
+          const s = document.createElement("script"); s.src = "https://accounts.google.com/gsi/client"; s.id = "google-gis-script"; s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
+        } else resolve();
+      });
+      const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
+      const token = await new Promise((resolve, reject) => {
+        const tc = window.google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: "https://www.googleapis.com/auth/gmail.compose",
+          callback: (r) => r.error ? reject(new Error(r.error)) : resolve(r.access_token), error_callback: (e) => reject(new Error(e?.message || "Auth error")) });
+        tc.requestAccessToken();
+      });
+      const draftResp = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ message: { raw } })
+      });
+      if (!draftResp.ok) throw new Error("No se pudo crear el borrador");
+      const draftData = await draftResp.json();
+      window.open(`https://mail.google.com/mail/u/0/#drafts/${draftData.message.id}`, "_blank");
+      setReportEmailTo("");
+    } catch (e) { alert("Error enviando: " + e.message); }
+    finally { setReportEmailSending(false); }
+  };
 
   // ── Origin mode: select from saved plan or manual input ──
   const [originMode, setOriginMode] = useState("auto"); // "auto" | "manual"
@@ -1005,19 +1122,49 @@ const saveReport = async () => {
         {raStep === "reporte" && (
           <div style={{ animation: "fadeIn 0.2s ease" }}>
             {/* Action bar */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
               <button onClick={() => setRaStep("analisis")} style={{ ...btnOutline, padding: "9px 16px", fontSize: 12 }}>← Agregar más análisis</button>
-              <button onClick={() => window.print()} style={{ ...btnPrimary, padding: "9px 20px", fontSize: 13 }}>🖨 Imprimir / PDF</button>
               <button onClick={() => { saveReport(); }} disabled={reportSaving} style={{
                 ...btnPrimary, padding: "9px 20px", fontSize: 13, background: "#3ECF8E",
                 opacity: reportSaving ? 0.6 : 1
               }}>
                 {reportSaving ? "⚙️ Guardando..." : existingReportId ? "💾 Actualizar reporte" : "💾 Guardar reporte"}
               </button>
+              <div style={{ width: 1, height: 24, background: C.borderLight }} />
+              <button onClick={exportReportPDF} disabled={sharingState === "pdf"} style={{ ...btnOutline, fontSize: 11, padding: "7px 12px" }} title="Descargar PDF">
+                {sharingState === "pdf" ? "⚙️..." : "📄 PDF"}
+              </button>
+              <button onClick={exportReportPNG} disabled={sharingState === "png"} style={{ ...btnOutline, fontSize: 11, padding: "7px 12px" }} title="Descargar PNG">
+                {sharingState === "png" ? "⚙️..." : "🖼 PNG"}
+              </button>
+              <button onClick={() => window.print()} style={{ ...btnOutline, fontSize: 11, padding: "7px 12px" }} title="Imprimir">
+                🖨 Imprimir
+              </button>
+              <button onClick={() => setReportEmailTo(reportEmailTo ? "" : " ")} style={{ ...btnOutline, fontSize: 11, padding: "7px 12px", borderColor: reportEmailTo ? C.redBorder : C.border, color: reportEmailTo ? C.redAccent : C.textSecondary }} title="Enviar por Gmail">
+                ✉️ Enviar
+              </button>
+              <button onClick={shareReportWhatsApp} disabled={sharingState === "whatsapp"} style={{ ...btnOutline, fontSize: 11, padding: "7px 12px", borderColor: "#25D366", color: "#25D366" }} title="Compartir por WhatsApp">
+                {sharingState === "whatsapp" ? "⚙️..." : "📲 WhatsApp"}
+              </button>
             </div>
 
+            {/* Email send bar */}
+            {reportEmailTo !== "" && (
+              <div style={{ ...cardStyle, marginBottom: 16, padding: "12px 18px", display: "flex", gap: 10, alignItems: "center", borderColor: C.redBorder, background: C.redSoft }}>
+                <span style={{ fontSize: 13, color: C.redAccent, fontWeight: 600, flexShrink: 0 }}>✉️ Enviar reporte a:</span>
+                <input placeholder="email@ejemplo.com" value={reportEmailTo.trim()} onChange={e => setReportEmailTo(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && reportEmailTo.trim() && sendReportByEmail(reportEmailTo.trim())}
+                  style={{ ...inputStyle, flex: 1, fontSize: 13 }} autoFocus />
+                <button onClick={() => sendReportByEmail(reportEmailTo.trim())} disabled={reportEmailSending || !reportEmailTo.trim()}
+                  style={{ ...btnPrimary, padding: "9px 18px", fontSize: 13, whiteSpace: "nowrap", opacity: (reportEmailSending || !reportEmailTo.trim()) ? 0.6 : 1 }}>
+                  {reportEmailSending ? "⚙️ Creando borrador..." : "✉️ Crear borrador en Gmail"}
+                </button>
+                <button onClick={() => setReportEmailTo("")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: C.redAccent, padding: "4px" }}>✕</button>
+              </div>
+            )}
+
             {/* Full plan table — same beautiful design */}
-            <div style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+            <div ref={reportContentRef} style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
               {/* Report header */}
               <div style={{ padding: "20px 24px", background: C.red, color: "#fff" }}>
                 <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 18, fontWeight: 700 }}>
