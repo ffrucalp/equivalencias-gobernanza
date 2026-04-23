@@ -92,7 +92,7 @@ function AppContent() {
               if (!sb) { setLoginError("Error de configuración."); setLoginLoading(false); return; }
               const { error } = await sb.auth.signInWithOAuth({
                 provider: "google",
-                options: { redirectTo: window.location.origin, queryParams: { hd: "ucalpvirtual.edu.ar" },
+                options: { redirectTo: window.location.origin,
                   scopes: "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose" }
               });
               if (error) { setLoginError(error.message); setLoginLoading(false); }
@@ -110,7 +110,7 @@ function AppContent() {
               {loginLoading ? "Redirigiendo..." : "Continuar con Google"}
             </button>
             <div style={{ marginTop: 16, fontSize: 11, color: C.textMuted, textAlign: "center", lineHeight: 1.5 }}>
-              Usá tu cuenta institucional <strong>@ucalpvirtual.edu.ar</strong>
+              Usá tu cuenta institucional <strong>@ucalp.edu.ar</strong> o <strong>@ucalpvirtual.edu.ar</strong>
             </div>
             <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${C.borderLight}`, fontSize: 11, color: C.textMuted, textAlign: "center" }}>
               Universidad Católica de La Plata · Fac. de Cs. Exactas e Ingeniería
